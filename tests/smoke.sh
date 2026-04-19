@@ -25,17 +25,17 @@ run_hook() {
 echo "== fast-path approve (ls) =="
 out="$(run_hook 'ls -la')"
 echo "  $out"
-[[ "$out" == *'"approve"'* ]] && pass "approve via fast-path" || fail "expected approve, got: $out"
+[[ "$out" == *'"permissionDecision": "allow"'* ]] && pass "approve via fast-path" || fail "expected approve, got: $out"
 
 echo "== fast-path deny (rm -rf /) =="
 out="$(run_hook 'rm -rf /')"
 echo "  $out"
-[[ "$out" == *'"deny"'* ]] && pass "deny via fast-path" || fail "expected deny, got: $out"
+[[ "$out" == *'"permissionDecision": "deny"'* ]] && pass "deny via fast-path" || fail "expected deny, got: $out"
 
 echo "== empty command =="
 out="$(run_hook '')"
 echo "  $out"
-[[ "$out" == *'"approve"'* ]] && pass "empty command approved" || fail "unexpected: $out"
+[[ "$out" == *'"permissionDecision": "allow"'* ]] && pass "empty command approved" || fail "unexpected: $out"
 
 if [ "$FAST" = 1 ]; then
     echo "(skipping LLM/cache/fail-safe — --fast)"
@@ -53,7 +53,7 @@ fi
 echo "== LLM path (kubectl apply -> ask) =="
 out="$(run_hook 'kubectl apply -f deploy.yaml')"
 echo "  $out"
-[[ "$out" == *'"ask"'* || "$out" == *'"deny"'* ]] && pass "non-approve decision via LLM" || fail "expected ask/deny, got: $out"
+[[ "$out" == *'"permissionDecision": "ask"'* || "$out" == *'"permissionDecision": "deny"'* ]] && pass "non-allow decision via LLM" || fail "expected ask/deny, got: $out"
 
 echo "== cache hit (same command again) =="
 out2="$(run_hook 'kubectl apply -f deploy.yaml')"
@@ -63,7 +63,7 @@ echo "  $out2"
 echo "== fail-safe (bad OLLAMA_HOST -> ask) =="
 out="$(OLLAMA_HOST='http://127.0.0.1:1' run_hook 'npm install foo-unknown-package-xyz')"
 echo "  $out"
-[[ "$out" == *'"ask"'* ]] && pass "fail-safe fell back to ask" || fail "expected ask, got: $out"
+[[ "$out" == *'"permissionDecision": "ask"'* ]] && pass "fail-safe fell back to ask" || fail "expected ask, got: $out"
 
 echo ""
 echo "All smoke checks passed."

@@ -7,6 +7,10 @@ home/.claude/active-policy.md
 examples/test-project/.claude/cache/
 examples/test-project/.claude/classifier.log
 
+# Runtime artefacts from the repo's project-scoped hook
+.claude/cache/
+.claude/classifier.log
+
 # Backup files created by install.sh / uninstall.sh
 *.bak-*
 

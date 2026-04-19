@@ -218,11 +218,29 @@ def debug(msg: str) -> None:
         print(f"[classifier] {msg}", file=sys.stderr)
 
 
+# Internally we use approve/ask/deny; Claude Code's PreToolUse expects
+# allow/ask/deny/defer nested under hookSpecificOutput.
+_DECISION_TO_PERMISSION = {"approve": "allow", "ask": "ask", "deny": "deny"}
+
+
+def emit(decision: str, reason: str) -> None:
+    """Write the JSON payload Claude Code expects on stdout."""
+    perm = _DECISION_TO_PERMISSION.get(decision, "ask")
+    payload = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": perm,
+            "permissionDecisionReason": reason,
+        }
+    }
+    print(json.dumps(payload, ensure_ascii=False))
+
+
 def main() -> None:
     try:
         event = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        print(json.dumps({"decision": "ask", "reason": f"invalid hook input: {e}"}))
+        emit("ask", f"invalid hook input: {e}")
         return
 
     tool_input = event.get("tool_input", {})
@@ -231,20 +249,19 @@ def main() -> None:
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", cwd)
 
     if not command:
-        print(json.dumps({"decision": "approve", "reason": "empty command"}))
+        emit("approve", "empty command")
         return
 
     fast = fast_path(command)
     if fast == "approve":
         debug(f"fast-path APPROVE: {command[:80]}")
-        print(json.dumps({"decision": "approve", "reason": "fast-path: safe prefix"}))
+        emit("approve", "fast-path: safe prefix")
         log_event({"cmd": command, "decision": "approve", "via": "fast-path"})
         return
 
     if fast == "deny":
         debug(f"fast-path DENY: {command[:80]}")
-        decision = {"decision": "deny", "reason": "fast-path: hard-deny pattern"}
-        print(json.dumps(decision))
+        emit("deny", "fast-path: hard-deny pattern")
         log_event({"cmd": command, "decision": "deny", "via": "fast-path"})
         return
 
@@ -255,7 +272,7 @@ def main() -> None:
     cached = cache_get(key)
     if cached:
         debug(f"cache HIT: {cached}")
-        print(json.dumps(cached))
+        emit(cached["decision"], cached.get("reason", ""))
         log_event({"cmd": command, "decision": cached["decision"], "via": "cache",
                    "policy": policy_source})
         return
@@ -264,14 +281,13 @@ def main() -> None:
         decision = call_ollama(command, policy, cwd)
         cache_set(key, decision)
         debug(f"llm: {decision}")
-        print(json.dumps(decision))
+        emit(decision["decision"], decision.get("reason", ""))
         log_event({"cmd": command, "decision": decision["decision"],
                    "reason": decision.get("reason"), "via": "ollama",
                    "model": OLLAMA_MODEL, "policy": policy_source})
     except Exception as e:
         debug(f"ollama FAILED: {e}")
-        fallback = {"decision": "ask", "reason": f"classifier unavailable: {str(e)[:80]}"}
-        print(json.dumps(fallback))
+        emit("ask", f"classifier unavailable: {str(e)[:80]}")
         log_event({"cmd": command, "decision": "ask", "via": "fail-safe",
                    "error": str(e)[:200]})
 

@@ -1,28 +1,31 @@
 {
   "name": "smart-allow",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "image": "jetpackio/devbox:latest",
+
+  "features": {
+    "ghcr.io/devcontainers/features/node:1.6.1": {
+      "version": "lts"
+    }
+  },
 
   "runArgs": [
+    "--security-opt=no-new-privileges=false",
     "--add-host=host.docker.internal:host-gateway"
   ],
 
+  "mounts": [
+    "source=${localEnv:HOME}/.claude,target=/home/devbox/.claude,type=bind,consistency=cached"
+  ],
+
   "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/devbox/.claude",
+    "HOST_WORKSPACE": "${localWorkspaceFolder}",
     "OLLAMA_HOST": "http://host.docker.internal:11434"
   },
 
-  "features": {
-    "ghcr.io/devcontainers/features/python:1": { "version": "3.12" }
-  },
+  "initializeCommand": "mkdir -p ${localEnv:HOME}/.claude",
 
-  "postCreateCommand": "pip install --user requests && bash install.sh --symlink --no-path-update",
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
 
-  "remoteEnv": {
-    "PATH": "${containerEnv:HOME}/.claude/bin:${containerEnv:PATH}"
-  },
-
-  "customizations": {
-    "vscode": {
-      "extensions": ["ms-python.python"]
-    }
-  }
+  "remoteUser": "devbox"
 }

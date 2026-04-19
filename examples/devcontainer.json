@@ -7,6 +7,10 @@
 //        a) Clone smart-allow as a sibling and mount it:   ../smart-allow
 //        b) Add it as a git submodule:                      ./vendor/smart-allow
 //   Adjust SMART_ALLOW_DIR below accordingly.
+//
+// Note: if your base image does not ship Python, use a Python-preinstalled base
+// (e.g. mcr.microsoft.com/devcontainers/python:3.12) or add the Python feature.
+// The postCreateCommand below uses `python3 -m pip` which works with both.
 {
   "runArgs": [
     "--add-host=host.docker.internal:host-gateway"
@@ -16,18 +20,14 @@
     "OLLAMA_HOST": "http://host.docker.internal:11434"
   },
 
-  "features": {
-    "ghcr.io/devcontainers/features/python:1": { "version": "3.12" }
-  },
-
   // Option A: sibling directory mount (uncomment if you cloned smart-allow next to this project)
   // "mounts": [
   //   "source=${localWorkspaceFolder}/../smart-allow,target=/workspaces/smart-allow,type=bind,consistency=cached"
   // ],
-  // "postCreateCommand": "pip install --user requests && bash /workspaces/smart-allow/install.sh --no-path-update",
+  // "postCreateCommand": "python3 -m pip install --user requests && bash /workspaces/smart-allow/install.sh --no-path-update",
 
   // Option B: submodule at vendor/smart-allow
-  "postCreateCommand": "pip install --user requests && bash ${containerWorkspaceFolder}/vendor/smart-allow/install.sh --no-path-update",
+  "postCreateCommand": "python3 -m pip install --user requests && bash ${containerWorkspaceFolder}/vendor/smart-allow/install.sh --no-path-update",
 
   "remoteEnv": {
     "PATH": "${containerEnv:HOME}/.claude/bin:${containerEnv:PATH}"
