@@ -1,21 +1,38 @@
 #!/usr/bin/env bash
-# smart-allow — install the Ollama-backed Claude Code classifier into ~/.claude/
-# Usage: ./install.sh [--symlink] [--dry-run] [--no-path-update] [--force]
+# smart-allow — install the Ollama-backed Claude Code classifier.
+# Downloads the Go binary from GitHub releases (or builds it from source) and
+# drops it into ~/.claude/bin, then installs policies and (optionally) wires a
+# global PreToolUse Bash hook in ~/.claude/settings.json.
+#
+# Usage: ./install.sh [flags]
+#   --from-source      Build locally via `go build` instead of downloading
+#   --version v0.1.2   Download a specific tag (default: latest)
+#   --no-global-hook   Skip merging into ~/.claude/settings.json
+#   --force            Overwrite existing policies
+#   --no-path-update   Don't touch ~/.bashrc / ~/.zshrc
+#   --dry-run          Show what would happen
 set -euo pipefail
 
-MODE="copy"
-DRY_RUN=0
-NO_PATH_UPDATE=0
+REPO_OWNER="SocialGouv"
+REPO_NAME="smart-allow"
+
+FROM_SOURCE=0
+VERSION=""
+NO_GLOBAL_HOOK=0
 FORCE=0
+NO_PATH_UPDATE=0
+DRY_RUN=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --symlink)        MODE="symlink" ;;
-        --dry-run)        DRY_RUN=1 ;;
-        --no-path-update) NO_PATH_UPDATE=1 ;;
-        --force)          FORCE=1 ;;
+        --from-source)     FROM_SOURCE=1 ;;
+        --version)         VERSION="$2"; shift ;;
+        --no-global-hook)  NO_GLOBAL_HOOK=1 ;;
+        --force)           FORCE=1 ;;
+        --no-path-update)  NO_PATH_UPDATE=1 ;;
+        --dry-run)         DRY_RUN=1 ;;
         -h|--help)
-            sed -n '2,4p' "$0"
+            sed -n '2,14p' "$0"
             exit 0
             ;;
         *)
@@ -27,136 +44,192 @@ while [ $# -gt 0 ]; do
 done
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC_DIR="$REPO_DIR/home/.claude"
 DEST_DIR="$HOME/.claude"
+BIN_DEST="$DEST_DIR/bin/classify-command"
+POLICIES_DEST="$DEST_DIR/policies"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 
 say()  { printf '\033[1;34m[install]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[install]\033[0m %s\n' "$*" >&2; }
 run()  { if [ "$DRY_RUN" = 1 ]; then echo "  would: $*"; else eval "$@"; fi; }
 
-if ! command -v python3 >/dev/null 2>&1; then
-    warn "python3 not found — required for the classifier and for merging settings.json."
-    exit 1
-fi
+# ---------- OS / arch detection ----------
+detect_platform() {
+    local os arch
+    case "$(uname -s)" in
+        Linux*)  os=linux ;;
+        Darwin*) os=darwin ;;
+        MINGW*|MSYS*|CYGWIN*) os=windows ;;
+        *) echo "Unsupported OS: $(uname -s)" >&2; exit 1 ;;
+    esac
+    case "$(uname -m)" in
+        x86_64|amd64)   arch=amd64 ;;
+        aarch64|arm64)  arch=arm64 ;;
+        *) echo "Unsupported arch: $(uname -m)" >&2; exit 1 ;;
+    esac
+    echo "$os-$arch"
+}
 
-say "source: $SRC_DIR"
-say "target: $DEST_DIR"
-if [ "$DRY_RUN" = 1 ]; then
-    say "mode:   $MODE (dry-run)"
-else
-    say "mode:   $MODE"
-fi
+# ---------- binary install ----------
+install_binary() {
+    local tmp plat url ext=""
+    plat="$(detect_platform)"
+    case "$plat" in
+        windows-*) ext=".exe"; BIN_DEST="${BIN_DEST}.exe" ;;
+    esac
 
-mkdir -p "$DEST_DIR/hooks" "$DEST_DIR/policies" "$DEST_DIR/bin"
+    mkdir -p "$DEST_DIR/bin"
 
-install_file() {
-    local src="$1" dest="$2" kind="$3"  # kind = hook|policy|bin
-    if [ -e "$dest" ] || [ -L "$dest" ]; then
-        if [ "$kind" = "policy" ] && [ "$FORCE" = 0 ]; then
-            say "skip policy (already exists, use --force to overwrite): $dest"
+    if [ "$FROM_SOURCE" = 1 ]; then
+        if ! command -v go >/dev/null 2>&1; then
+            warn "Go not found, but --from-source requested. Install Go (or run without --from-source to download a release)."
+            exit 2
+        fi
+        say "building from source in $REPO_DIR"
+        run "cd '$REPO_DIR' && go build -trimpath -ldflags='-s -w' -o '$BIN_DEST' ./cmd/classify-command"
+    else
+        if [ -z "$VERSION" ]; then
+            url="https://github.com/$REPO_OWNER/$REPO_NAME/releases/latest/download/classify-command-${plat}${ext}"
+        else
+            url="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/${VERSION}/classify-command-${plat}${ext}"
+        fi
+        say "downloading $url"
+        tmp="$(mktemp)"
+        if [ "$DRY_RUN" = 1 ]; then
+            echo "  would: curl -fsSL '$url' -o '$BIN_DEST' && chmod +x '$BIN_DEST'"
             return 0
         fi
-        if [ "$FORCE" = 0 ]; then
-            run "cp -a '$dest' '$dest.bak-$STAMP'"
+        if ! curl -fsSL "$url" -o "$tmp"; then
+            warn "download failed."
+            warn "  - Is there a release at the URL above?"
+            warn "  - Try --from-source if you have the Go toolchain."
+            rm -f "$tmp"
+            exit 3
         fi
-        run "rm -f '$dest'"
+        install -m755 "$tmp" "$BIN_DEST"
+        rm -f "$tmp"
     fi
-    if [ "$MODE" = "symlink" ]; then
-        run "ln -s '$src' '$dest'"
-    else
-        run "cp '$src' '$dest'"
+    say "binary installed: $BIN_DEST"
+}
+
+# ---------- policies ----------
+install_policies() {
+    mkdir -p "$POLICIES_DEST"
+    for f in "$REPO_DIR"/policies/*.md; do
+        local dest="$POLICIES_DEST/$(basename "$f")"
+        if [ -e "$dest" ] && [ "$FORCE" = 0 ]; then
+            say "skip policy (already exists, use --force to overwrite): $dest"
+            continue
+        fi
+        run "cp '$f' '$dest'"
+    done
+    if [ ! -L "$DEST_DIR/active-policy.md" ] && [ ! -e "$DEST_DIR/active-policy.md" ]; then
+        run "ln -sfn '$POLICIES_DEST/normal.md' '$DEST_DIR/active-policy.md'"
+        say "activated policy: normal"
     fi
 }
 
-for f in "$SRC_DIR"/hooks/*; do
-    install_file "$f" "$DEST_DIR/hooks/$(basename "$f")" hook
-done
-
-for f in "$SRC_DIR"/policies/*.md; do
-    install_file "$f" "$DEST_DIR/policies/$(basename "$f")" policy
-done
-
-for f in "$SRC_DIR"/bin/*; do
-    install_file "$f" "$DEST_DIR/bin/$(basename "$f")" bin
-done
-
-run "chmod +x '$DEST_DIR/hooks/classify-command.py' '$DEST_DIR/bin/claude-policy'"
-
-say "merging hook into $DEST_DIR/settings.json"
-SNIPPET="$SRC_DIR/settings.json.snippet"
-SETTINGS="$DEST_DIR/settings.json"
-
-if [ "$DRY_RUN" = 1 ]; then
-    echo "  would merge snippet $SNIPPET into $SETTINGS"
-else
-    if [ -f "$SETTINGS" ]; then
-        cp -a "$SETTINGS" "$SETTINGS.bak-$STAMP"
+# ---------- claude-policy util ----------
+install_util() {
+    if [ -f "$REPO_DIR/scripts/claude-policy" ]; then
+        run "install -m755 '$REPO_DIR/scripts/claude-policy' '$DEST_DIR/bin/claude-policy'"
     fi
-    python3 - "$SNIPPET" "$SETTINGS" <<'PY'
-import json, sys, os
-snippet_path, settings_path = sys.argv[1], sys.argv[2]
-with open(snippet_path) as f:
-    snippet = json.load(f)
-if os.path.exists(settings_path):
+}
+
+# ---------- settings.json merge (global hook) ----------
+merge_global_hook() {
+    local settings="$DEST_DIR/settings.json"
+    if [ "$DRY_RUN" = 1 ]; then
+        echo "  would merge hook into $settings"
+        return 0
+    fi
+    if [ -f "$settings" ]; then
+        cp -a "$settings" "$settings.bak-$STAMP"
+    fi
+    python3 - "$settings" "$BIN_DEST" <<'PY'
+import json, os, sys
+settings_path, bin_path = sys.argv[1], sys.argv[2]
+cmd = (
+    'CLAUDE_CLASSIFIER_CACHE_DIR="$CLAUDE_PROJECT_DIR/.claude/cache" '
+    'CLAUDE_CLASSIFIER_LOG="$CLAUDE_PROJECT_DIR/.claude/classifier.log" '
+    f'"{bin_path}"'
+)
+try:
     with open(settings_path) as f:
         settings = json.load(f)
-else:
+except FileNotFoundError:
     settings = {}
 
 settings.setdefault("hooks", {}).setdefault("PreToolUse", [])
-sentinel = "classify-command.py"
-already = False
-for matcher_entry in settings["hooks"]["PreToolUse"]:
-    for h in matcher_entry.get("hooks", []):
-        if sentinel in h.get("command", ""):
-            already = True
-            break
-if not already:
-    settings["hooks"]["PreToolUse"].extend(snippet["hooks"]["PreToolUse"])
+sentinel = "classify-command"
+already = any(
+    sentinel in h.get("command", "")
+    for entry in settings["hooks"]["PreToolUse"]
+    for h in entry.get("hooks", [])
+)
+if already:
+    print(f"  hook already registered in {settings_path}")
+else:
+    settings["hooks"]["PreToolUse"].append({
+        "matcher": "Bash",
+        "hooks": [{"type": "command", "command": cmd, "timeout": 15000}],
+    })
     with open(settings_path, "w") as f:
         json.dump(settings, f, indent=2)
     print(f"  hook added to {settings_path}")
-else:
-    print(f"  hook already registered in {settings_path} (no change)")
 PY
-fi
+}
 
-BIN_EXPORT='export PATH="$HOME/.claude/bin:$PATH"'
-if ! printf '%s' "${PATH:-}" | tr ':' '\n' | grep -qx "$HOME/.claude/bin"; then
+# ---------- PATH update ----------
+maybe_update_path() {
+    local export_line='export PATH="$HOME/.claude/bin:$PATH"'
+    if printf '%s' "${PATH:-}" | tr ':' '\n' | grep -qx "$HOME/.claude/bin"; then
+        return 0
+    fi
     if [ "$NO_PATH_UPDATE" = 1 ]; then
-        say "add this to your shell rc to use claude-policy: $BIN_EXPORT"
-    else
-        rc=""
-        case "${SHELL:-}" in
-            */zsh)  rc="$HOME/.zshrc" ;;
-            */bash) rc="$HOME/.bashrc" ;;
-            *)      rc="" ;;
-        esac
-        if [ -n "$rc" ] && ! grep -qsF "$BIN_EXPORT" "$rc" 2>/dev/null; then
-            printf '\n# added by smart-allow install.sh\n%s\n' "$BIN_EXPORT" >> "$rc"
-            say "added PATH export to $rc (restart your shell or 'source $rc')"
-        fi
+        say "PATH hint (add to your shell rc): $export_line"
+        return 0
     fi
+    local rc=""
+    case "${SHELL:-}" in
+        */zsh)  rc="$HOME/.zshrc" ;;
+        */bash) rc="$HOME/.bashrc" ;;
+    esac
+    if [ -n "$rc" ] && ! grep -qsF "$export_line" "$rc" 2>/dev/null; then
+        run "printf '\\n# added by smart-allow install.sh\\n%s\\n' '$export_line' >> '$rc'"
+        say "added PATH export to $rc (restart your shell or 'source $rc')"
+    fi
+}
+
+# ---------- main ----------
+if ! command -v python3 >/dev/null 2>&1; then
+    warn "python3 is required for the settings.json merge step."
+    warn "Install it and re-run, or pass --no-global-hook to skip that step."
+    [ "$NO_GLOBAL_HOOK" = 0 ] && exit 1
 fi
 
-say "running fast-path smoke test"
-if [ -x "$REPO_DIR/tests/smoke.sh" ]; then
-    if "$REPO_DIR/tests/smoke.sh" --fast; then
-        say "fast-path smoke test: OK"
-    else
-        warn "fast-path smoke test failed"
-    fi
+say "target: $DEST_DIR"
+install_binary
+install_policies
+install_util
+
+if [ "$NO_GLOBAL_HOOK" = 0 ]; then
+    say "merging global hook into $DEST_DIR/settings.json"
+    merge_global_hook
 else
-    warn "smoke test not executable, skipping"
+    say "skipped global hook (--no-global-hook). Use project-scoped .claude/settings.json instead."
 fi
 
+maybe_update_path
+
+say "done."
 cat <<EOF
 
-Done. Next steps:
-  - Pick a policy:    claude-policy normal    (also: strict | permissive)
-  - Per-project:      create <project>/.claude/session-policy.md (see examples/)
+Next steps:
+  - Pick a policy:    claude-policy normal | strict | permissive
+  - Per-project:      drop <project>/.claude/session-policy.md (override)
   - Full smoke test:  bash $REPO_DIR/tests/smoke.sh
-  - Env vars:         OLLAMA_HOST, CLAUDE_CLASSIFIER_MODEL, CLAUDE_CLASSIFIER_TIMEOUT,
-                      CLAUDE_CLASSIFIER_CACHE_TTL, CLAUDE_HOOK_DEBUG=1
+  - Env vars you can tune:
+      OLLAMA_HOST, CLAUDE_CLASSIFIER_MODEL, CLAUDE_CLASSIFIER_TIMEOUT,
+      CLAUDE_CLASSIFIER_CACHE_TTL, CLAUDE_HOOK_DEBUG=1
 EOF

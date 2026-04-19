@@ -1,27 +1,16 @@
 #!/usr/bin/env bash
 # Runs once when the devcontainer is first created.
-# Installs Claude Code CLI + Python deps for the smart-allow classifier,
-# then sets up the project-history symlink trick (host/container path diff).
+#
+# Prerequisite: devbox (pre-installed in jetpackio/devbox:latest).
+# devbox.json pins the Go toolchain used to build the classifier.
 set -euo pipefail
 
 echo ">> install Claude Code CLI"
 npm install -g @anthropic-ai/claude-code
 
-echo ">> ensure python3 + pip + requests"
-# The devbox image ships python3 without the pip module, so check for pip
-# specifically, not just python3.
-if ! python3 -m pip --version >/dev/null 2>&1; then
-    if command -v apt-get >/dev/null 2>&1; then
-        sudo apt-get update
-        sudo apt-get install -y --no-install-recommends python3 python3-pip
-    else
-        echo "!! pip not found and apt-get unavailable — install python3-pip manually" >&2
-        exit 1
-    fi
-fi
-# PEP 668: newer distros refuse user installs into system python without --break-system-packages.
-python3 -m pip install --user --break-system-packages requests 2>/dev/null \
-    || python3 -m pip install --user requests
+echo ">> build classify-command via devbox (go toolchain)"
+devbox run build
+devbox run install-local
 
 echo ">> link claude project history if host path differs from container path"
 HOST_KEY="$(echo "${HOST_WORKSPACE:-}" | tr '/' '-')"
@@ -32,8 +21,16 @@ if [ -n "$HOST_KEY" ] && [ "$HOST_KEY" != "$CONTAINER_KEY" ] \
     echo "   linked $HOST_KEY -> $CONTAINER_KEY"
 fi
 
-echo ""
-echo ">> smart-allow project-scoped hook: $(pwd)/.claude/settings.json"
-echo "   (global ~/.claude/settings.json is mounted from host and left untouched)"
-echo ""
-echo ">> done. Start Claude Code with:  claude"
+cat <<'EOF'
+
+>> smart-allow project-scoped hook is wired in .claude/settings.json
+   (the global ~/.claude/settings.json is the host's and stays untouched)
+
+>> done. Start Claude Code with:  claude
+
+>> Useful devbox scripts:
+     devbox run build            # rebuild the Go classifier
+     devbox run install-local    # copy binary to ~/.claude/bin/classify-command
+     devbox run test             # run Go tests
+     devbox run smoke-project    # run the isolated smoke test
+EOF

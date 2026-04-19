@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.17.1/.schema/devbox.schema.json",
+  "packages": [
+    "go@latest"
+  ],
+  "shell": {
+    "init_hook": [
+      "echo smart-allow dev shell ready"
+    ],
+    "scripts": {
+      "build": "go build -o bin/classify-command ./cmd/classify-command",
+      "install-local": "install -Dm755 bin/classify-command $HOME/.claude/bin/classify-command",
+      "test": "go test ./...",
+      "smoke": "bash tests/smoke.sh",
+      "smoke-project": "bash examples/test-project/run-test.sh",
+      "clean": "rm -rf bin/"
+    }
+  }
+}

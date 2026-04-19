@@ -1,16 +1,16 @@
 // Minimal snippet to wire smart-allow into your own project's devcontainer.
 // Merge the keys below into your existing .devcontainer/devcontainer.json.
 //
-// Prerequisites:
-//   1. Ollama configured on the host (run ./install-host-ollama.sh from smart-allow).
-//   2. smart-allow cloned somewhere reachable from the container. Two common layouts:
-//        a) Clone smart-allow as a sibling and mount it:   ../smart-allow
-//        b) Add it as a git submodule:                      ./vendor/smart-allow
-//   Adjust SMART_ALLOW_DIR below accordingly.
+// Prerequisites on the HOST (once):
+//   - Ollama installed and listening on 0.0.0.0 (run ./install-host-ollama.sh from smart-allow).
 //
-// Note: if your base image does not ship Python, use a Python-preinstalled base
-// (e.g. mcr.microsoft.com/devcontainers/python:3.12) or add the Python feature.
-// The postCreateCommand below uses `python3 -m pip` which works with both.
+// The installer downloads a prebuilt Go binary from GitHub releases; no Go/Python
+// toolchain is required at install time. If you prefer building from source, pass
+// --from-source (needs Go).
+//
+// Two common layouts for smart-allow:
+//   a) Sibling clone next to this project: ../smart-allow
+//   b) Git submodule at vendor/smart-allow
 {
   "runArgs": [
     "--add-host=host.docker.internal:host-gateway"
@@ -20,14 +20,14 @@
     "OLLAMA_HOST": "http://host.docker.internal:11434"
   },
 
-  // Option A: sibling directory mount (uncomment if you cloned smart-allow next to this project)
+  // Option A: sibling directory mount — uncomment these two and comment out Option B.
   // "mounts": [
   //   "source=${localWorkspaceFolder}/../smart-allow,target=/workspaces/smart-allow,type=bind,consistency=cached"
   // ],
-  // "postCreateCommand": "python3 -m pip install --user requests && bash /workspaces/smart-allow/install.sh --no-path-update",
+  // "postCreateCommand": "bash /workspaces/smart-allow/install.sh --no-path-update",
 
   // Option B: submodule at vendor/smart-allow
-  "postCreateCommand": "python3 -m pip install --user requests && bash ${containerWorkspaceFolder}/vendor/smart-allow/install.sh --no-path-update",
+  "postCreateCommand": "bash ${containerWorkspaceFolder}/vendor/smart-allow/install.sh --no-path-update",
 
   "remoteEnv": {
     "PATH": "${containerEnv:HOME}/.claude/bin:${containerEnv:PATH}"
