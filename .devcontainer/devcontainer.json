@@ -1,0 +1,28 @@
+{
+  "name": "smart-allow",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+
+  "runArgs": [
+    "--add-host=host.docker.internal:host-gateway"
+  ],
+
+  "containerEnv": {
+    "OLLAMA_HOST": "http://host.docker.internal:11434"
+  },
+
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": { "version": "3.12" }
+  },
+
+  "postCreateCommand": "pip install --user requests && bash install.sh --symlink --no-path-update",
+
+  "remoteEnv": {
+    "PATH": "${containerEnv:HOME}/.claude/bin:${containerEnv:PATH}"
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python"]
+    }
+  }
+}

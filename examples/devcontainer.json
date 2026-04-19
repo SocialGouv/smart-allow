@@ -1,0 +1,35 @@
+// Minimal snippet to wire smart-allow into your own project's devcontainer.
+// Merge the keys below into your existing .devcontainer/devcontainer.json.
+//
+// Prerequisites:
+//   1. Ollama configured on the host (run ./install-host-ollama.sh from smart-allow).
+//   2. smart-allow cloned somewhere reachable from the container. Two common layouts:
+//        a) Clone smart-allow as a sibling and mount it:   ../smart-allow
+//        b) Add it as a git submodule:                      ./vendor/smart-allow
+//   Adjust SMART_ALLOW_DIR below accordingly.
+{
+  "runArgs": [
+    "--add-host=host.docker.internal:host-gateway"
+  ],
+
+  "containerEnv": {
+    "OLLAMA_HOST": "http://host.docker.internal:11434"
+  },
+
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": { "version": "3.12" }
+  },
+
+  // Option A: sibling directory mount (uncomment if you cloned smart-allow next to this project)
+  // "mounts": [
+  //   "source=${localWorkspaceFolder}/../smart-allow,target=/workspaces/smart-allow,type=bind,consistency=cached"
+  // ],
+  // "postCreateCommand": "pip install --user requests && bash /workspaces/smart-allow/install.sh --no-path-update",
+
+  // Option B: submodule at vendor/smart-allow
+  "postCreateCommand": "pip install --user requests && bash ${containerWorkspaceFolder}/vendor/smart-allow/install.sh --no-path-update",
+
+  "remoteEnv": {
+    "PATH": "${containerEnv:HOME}/.claude/bin:${containerEnv:PATH}"
+  }
+}

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+POLICY="${1:-}"
+DIR="$HOME/.claude/policies"
+ACTIVE="$HOME/.claude/active-policy.md"
+
+case "$POLICY" in
+    strict|normal|permissive)
+        ln -sf "$DIR/$POLICY.md" "$ACTIVE"
+        echo "Policy active : $POLICY"
+        echo "Symlink : $ACTIVE -> $DIR/$POLICY.md"
+        ;;
+    show|"")
+        if [ -L "$ACTIVE" ]; then
+            readlink "$ACTIVE"
+        else
+            echo "Aucune policy active (fallback = normal)"
+        fi
+        ;;
+    list)
+        ls "$DIR"
+        ;;
+    *)
+        echo "Usage: claude-policy [strict|normal|permissive|show|list]"
+        exit 1
+        ;;
+esac

@@ -1,0 +1,15 @@
+# Local caches / logs produced by the classifier if it runs from the repo path
+home/.claude/classifier-cache/
+home/.claude/classifier.log
+home/.claude/active-policy.md
+
+# Runtime artefacts from examples/test-project
+examples/test-project/.claude/cache/
+examples/test-project/.claude/classifier.log
+
+# Backup files created by install.sh / uninstall.sh
+*.bak-*
+
+# Python
+__pycache__/
+*.pyc
