@@ -1,8 +1,15 @@
-# Go build output
-bin/
+# Go build output (binary at repo root + per-platform release artefacts)
+/classify-command
+/classify-command-*
 
 # devbox local state
 .devbox/
+
+# go-task cache state
+.task/
+
+# node_modules (release-it tooling)
+node_modules/
 
 # Runtime artefacts from examples/test-project
 examples/test-project/.claude/cache/

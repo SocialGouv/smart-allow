@@ -1,0 +1,91 @@
+name: 📦 Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-binaries:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            runner: ubuntu-latest
+          - goos: linux
+            goarch: arm64
+            runner: ubuntu-latest
+          - goos: darwin
+            goarch: amd64
+            runner: macos-latest
+          - goos: darwin
+            goarch: arm64
+            runner: macos-latest
+          - goos: windows
+            goarch: amd64
+            runner: ubuntu-latest
+          - goos: windows
+            goarch: arm64
+            runner: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Build binary
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        shell: bash
+        run: |
+          EXT=""
+          if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
+          OUTPUT="classify-command-${GOOS}-${GOARCH}${EXT}"
+          VERSION="$(node -p "require('./package.json').version")"
+          COMMIT="$(git rev-parse --short HEAD)"
+          LDFLAGS="-s -w -X github.com/SocialGouv/smart-allow/internal/appinfo.Version=v${VERSION} -X github.com/SocialGouv/smart-allow/internal/appinfo.Commit=${COMMIT}"
+          go build -trimpath -ldflags="${LDFLAGS}" -o "${OUTPUT}" ./cmd/classify-command
+          if command -v sha256sum &>/dev/null; then
+            sha256sum "${OUTPUT}" > "${OUTPUT}.sha256"
+          else
+            shasum -a 256 "${OUTPUT}" > "${OUTPUT}.sha256"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: classify-command-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            classify-command-${{ matrix.goos }}-${{ matrix.goarch }}*
+
+  release:
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: artifacts/*

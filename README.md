@@ -203,15 +203,31 @@ See also [plan-ollama-classifier.md — Annexe A](plan-ollama-classifier.md) for
 
 ## Developer workflow (this repo)
 
-All build/test commands go through `devbox` to pin the Go toolchain. See
+Everything goes through [devbox](https://www.jetify.com/devbox) (pins Go,
+`go-task`, Node.js) and [go-task](https://taskfile.dev) (`task`). See
 [CLAUDE.md](CLAUDE.md) for the full guide.
 
 ```bash
-devbox run build            # compile ./cmd/classify-command
-devbox run test             # go test ./...
-devbox run install-local    # copy binary to ~/.claude/bin/classify-command
-devbox run smoke-project    # end-to-end test against Ollama, project-scoped
+devbox run -- task build          # compile → ./classify-command (ldflags inject version)
+devbox run -- task check          # go fmt + go vet + go test
+devbox run -- task install        # copy binary to ~/.claude/bin/classify-command
+devbox run -- task smoke:project  # end-to-end against Ollama, project-scoped
+devbox run -- task --list-all     # discover all targets
 ```
+
+### Releasing
+
+The release pipeline mirrors [iterion](https://github.com/SocialGouv/iterion)'s:
+
+1. Merge conventional commits (`feat:`, `fix:`, …) to `main`.
+2. `version.yml` runs `release-it --ci`, bumps `package.json`, tags `vX.Y.Z`,
+   creates the GitHub release.
+3. The tag push triggers `release.yml`, which matrix-builds Linux / macOS /
+   Windows × amd64 / arm64 binaries (each with a `.sha256` companion) and
+   attaches them to the release via `softprops/action-gh-release`.
+
+No `goreleaser` — plain `go build -trimpath -ldflags` with
+`-X internal/appinfo.Version=…` and `-X internal/appinfo.Commit=…`.
 
 ## Uninstall
 

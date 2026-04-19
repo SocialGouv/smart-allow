@@ -3,10 +3,10 @@
 // hookSpecificOutput.permissionDecision (Claude Code ≥ 2.1).
 //
 // Pipeline:
-//   1. fast-path déterministe (allowlist/denylist)
-//   2. cache local (TTL 1h par défaut)
-//   3. LLM local via Ollama
-//   4. fail-safe → "ask" si le LLM échoue
+//  1. fast-path déterministe (allowlist/denylist)
+//  2. cache local (TTL 1h par défaut)
+//  3. LLM local via Ollama
+//  4. fail-safe → "ask" si le LLM échoue
 package main
 
 import (
@@ -17,6 +17,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/SocialGouv/smart-allow/internal/appinfo"
 )
 
 var (
@@ -28,6 +30,24 @@ var (
 )
 
 func main() {
+	// Minimal flag handling: --version / -v prints the build identity and exits.
+	// Everything else falls through to the hook pipeline (which reads stdin).
+	for _, a := range os.Args[1:] {
+		switch a {
+		case "--version", "-v":
+			fmt.Printf("%s %s\n", appinfo.Name, appinfo.FullVersion())
+			return
+		case "--help", "-h":
+			fmt.Fprintf(os.Stderr,
+				"%s %s — Claude Code PreToolUse Bash classifier.\n\n"+
+					"Usage: %s  (reads a PreToolUse JSON event on stdin, writes a\n"+
+					"         hookSpecificOutput decision JSON on stdout)\n\n"+
+					"Flags:\n  -v, --version   print version and exit\n  -h, --help      this help\n",
+				appinfo.Name, appinfo.FullVersion(), appinfo.Name)
+			return
+		}
+	}
+
 	home, _ := os.UserHomeDir()
 
 	cacheDir := envOr("CLAUDE_CLASSIFIER_CACHE_DIR", filepath.Join(home, ".claude", "classifier-cache"))

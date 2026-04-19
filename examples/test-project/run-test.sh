@@ -10,13 +10,13 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 
-# Resolve binary: prefer repo build, fall back to ~/.claude/bin.
-if [ -x "$REPO/bin/classify-command" ]; then
-    BIN="$REPO/bin/classify-command"
+# Resolve binary: prefer repo root build, fall back to ~/.claude/bin.
+if [ -x "$REPO/classify-command" ]; then
+    BIN="$REPO/classify-command"
 elif [ -x "$HOME/.claude/bin/classify-command" ]; then
     BIN="$HOME/.claude/bin/classify-command"
 else
-    echo "FAIL: classify-command binary not found. Build with: devbox run build" >&2
+    echo "FAIL: classify-command binary not found. Build with: devbox run -- task build" >&2
     exit 1
 fi
 

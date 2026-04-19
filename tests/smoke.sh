@@ -10,14 +10,14 @@ if [ "${1:-}" = "--fast" ]; then FAST=1; fi
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
 
-# Resolve the binary: prefer locally-built one, fall back to installed one.
-if [ -x "$REPO/bin/classify-command" ]; then
-    BIN="$REPO/bin/classify-command"
+# Resolve the binary: prefer locally-built one at repo root, fall back to installed one.
+if [ -x "$REPO/classify-command" ]; then
+    BIN="$REPO/classify-command"
 elif [ -x "$HOME/.claude/bin/classify-command" ]; then
     BIN="$HOME/.claude/bin/classify-command"
 else
     echo "FAIL: classify-command binary not found." >&2
-    echo "      Build it with: devbox run build" >&2
+    echo "      Build it with: devbox run -- task build" >&2
     exit 1
 fi
 

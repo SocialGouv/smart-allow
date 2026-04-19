@@ -2,15 +2,15 @@
 # Runs once when the devcontainer is first created.
 #
 # Prerequisite: devbox (pre-installed in jetpackio/devbox:latest).
-# devbox.json pins the Go toolchain used to build the classifier.
+# devbox.json pins Go + go-task + Node.js; Taskfile.yml holds the build
+# recipes.
 set -euo pipefail
 
 echo ">> install Claude Code CLI"
 npm install -g @anthropic-ai/claude-code
 
-echo ">> build classify-command via devbox (go toolchain)"
-devbox run build
-devbox run install-local
+echo ">> build and install classify-command via task (devbox-provided Go)"
+devbox run -- task install
 
 echo ">> link claude project history if host path differs from container path"
 HOST_KEY="$(echo "${HOST_WORKSPACE:-}" | tr '/' '-')"
@@ -28,9 +28,11 @@ cat <<'EOF'
 
 >> done. Start Claude Code with:  claude
 
->> Useful devbox scripts:
-     devbox run build            # rebuild the Go classifier
-     devbox run install-local    # copy binary to ~/.claude/bin/classify-command
-     devbox run test             # run Go tests
-     devbox run smoke-project    # run the isolated smoke test
+>> Useful commands (all via devbox + task):
+     devbox run -- task build          # rebuild the Go classifier
+     devbox run -- task install        # rebuild and copy to ~/.claude/bin/
+     devbox run -- task test           # go test ./...
+     devbox run -- task check          # lint + test
+     devbox run -- task smoke:project  # isolated end-to-end against Ollama
+     devbox run -- task --list-all     # discover all tasks
 EOF

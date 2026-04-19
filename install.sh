@@ -85,8 +85,15 @@ install_binary() {
             warn "Go not found, but --from-source requested. Install Go (or run without --from-source to download a release)."
             exit 2
         fi
-        say "building from source in $REPO_DIR"
-        run "cd '$REPO_DIR' && go build -trimpath -ldflags='-s -w' -o '$BIN_DEST' ./cmd/classify-command"
+        local build_version build_commit ldflags
+        build_version="$(node -p "require('$REPO_DIR/package.json').version" 2>/dev/null || echo "dev")"
+        build_commit="$(cd "$REPO_DIR" && git rev-parse --short HEAD 2>/dev/null || echo "")"
+        ldflags="-s -w -X github.com/SocialGouv/smart-allow/internal/appinfo.Version=v${build_version}"
+        if [ -n "$build_commit" ]; then
+            ldflags="$ldflags -X github.com/SocialGouv/smart-allow/internal/appinfo.Commit=${build_commit}"
+        fi
+        say "building from source in $REPO_DIR (v${build_version}${build_commit:++${build_commit}})"
+        run "cd '$REPO_DIR' && go build -trimpath -ldflags='$ldflags' -o '$BIN_DEST' ./cmd/classify-command"
     else
         if [ -z "$VERSION" ]; then
             url="https://github.com/$REPO_OWNER/$REPO_NAME/releases/latest/download/classify-command-${plat}${ext}"

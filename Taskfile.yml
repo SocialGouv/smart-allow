@@ -1,0 +1,92 @@
+version: "3"
+
+vars:
+  BINARY: classify-command
+  CMD: ./cmd/classify-command
+  VERSION:
+    sh: node -p "require('./package.json').version" 2>/dev/null || echo "dev"
+  COMMIT:
+    sh: git rev-parse --short HEAD 2>/dev/null || echo ""
+  LDFLAGS: -s -w -X github.com/SocialGouv/smart-allow/internal/appinfo.Version=v{{.VERSION}} -X github.com/SocialGouv/smart-allow/internal/appinfo.Commit={{.COMMIT}}
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list-all
+
+  build:
+    desc: Build the classifier binary → ./classify-command
+    env:
+      CGO_ENABLED: "0"
+    cmds:
+      - go build -trimpath -ldflags "{{.LDFLAGS}}" -o {{.BINARY}} {{.CMD}}
+    sources:
+      - "**/*.go"
+      - go.mod
+    generates:
+      - "{{.BINARY}}"
+
+  install:
+    desc: Build and install to $HOME/.claude/bin
+    deps: [build]
+    cmds:
+      - install -Dm755 {{.BINARY}} $HOME/.claude/bin/{{.BINARY}}
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - go test ./...
+
+  test:verbose:
+    desc: Run unit tests (verbose)
+    cmds:
+      - go test -v ./...
+
+  test:race:
+    desc: Run tests with race detector
+    cmds:
+      - go test -race ./...
+
+  fmt:
+    desc: Format Go source files
+    cmds:
+      - go fmt ./...
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  lint:
+    desc: Run fmt and vet
+    deps: [fmt, vet]
+
+  check:
+    desc: Run all checks (lint + test)
+    cmds:
+      - task: lint
+      - task: test
+
+  smoke:
+    desc: Shell smoke test (needs Ollama)
+    deps: [build]
+    cmds:
+      - bash tests/smoke.sh
+
+  smoke:project:
+    desc: Isolated project-scoped smoke test
+    deps: [build]
+    cmds:
+      - bash examples/test-project/run-test.sh
+
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -f {{.BINARY}} classify-command-*
+
+  version:
+    desc: Print the version injected into the binary (from package.json + git)
+    deps: [build]
+    cmds:
+      - ./{{.BINARY}} --version
