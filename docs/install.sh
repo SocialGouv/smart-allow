@@ -42,10 +42,16 @@ detect_platform() {
 
 fetch() {
     # fetch <url> <output>
+    #
+    # curl -f swallows the body on HTTP errors and returns non-zero with no
+    # message; combined with `set -e` that would kill the script silently.
+    # We surface the HTTP status explicitly.
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "$1" -o "$2"
+        code=$(curl -fsSL --write-out '%{http_code}' --output "$2" "$1" 2>/dev/null) \
+            || { rm -f "$2"; error "failed to fetch ${1} (HTTP ${code:-?})"; }
     elif command -v wget >/dev/null 2>&1; then
-        wget -q "$1" -O "$2"
+        wget -q "$1" -O "$2" \
+            || { rm -f "$2"; error "failed to fetch ${1}"; }
     else
         error "curl or wget is required"
     fi
@@ -66,7 +72,23 @@ install_binary() {
 
     info "downloading ${BINARY_NAME} ${VERSION} (${OS}/${ARCH})..."
     TMPDIR="$(mktemp -d)"
-    fetch "$URL" "${TMPDIR}/${FILENAME}"
+    if ! fetch "$URL" "${TMPDIR}/${FILENAME}"; then
+        cat <<MSG >&2
+
+The release '${VERSION}' exists, but has no asset for ${OS}-${ARCH}.
+This usually means the release workflow never ran for that tag.
+Trigger it manually and retry:
+
+    gh workflow run "📦 Release" --ref ${VERSION}
+
+Or pick another tag with:
+
+    VERSION=vX.Y.Z curl -fsSL https://socialgouv.github.io/smart-allow/install.sh | sh
+
+MSG
+        exit 1
+    fi
+    # Checksum is best-effort: old releases predate the .sha256 companion.
     fetch "$CHECKSUM_URL" "${TMPDIR}/${FILENAME}.sha256" 2>/dev/null || true
 
     if [ -s "${TMPDIR}/${FILENAME}.sha256" ]; then
