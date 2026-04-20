@@ -32,23 +32,42 @@ Claude Code (host or devcontainer)
 
 ## Quickstart
 
-### A. Local host (simplest)
+### A. One-liner (recommended)
+
+```bash
+curl -fsSL https://socialgouv.github.io/smart-allow/install.sh | sh
+```
+
+This downloads the latest release binary + the three Markdown policies, and
+wires the `PreToolUse` Bash hook into `~/.claude/settings.json`. It does
+**not** install or configure Ollama itself — do that once with
+[`install-host-ollama.sh`](install-host-ollama.sh) (see step B).
+
+Env overrides: `VERSION=v0.1.2`, `INSTALL_DIR=/usr/local/bin`, `NO_HOOK=1`,
+`NO_POLICIES=1`.
+
+### B. Ollama on the host (once)
 
 ```bash
 git clone https://github.com/SocialGouv/smart-allow && cd smart-allow
 ./install-host-ollama.sh          # configures Ollama, pulls the model (y/N prompts)
-./install.sh                      # downloads the binary from GitHub releases,
-                                  # installs policies, wires ~/.claude/settings.json
+```
+
+Skip if you already have Ollama listening on `0.0.0.0:11434` with a coder
+model pulled (default: `qwen2.5-coder:7b`).
+
+### C. From a checkout (contributor flow)
+
+```bash
+git clone https://github.com/SocialGouv/smart-allow && cd smart-allow
+./install.sh                      # --from-source optional: builds via go build
 bash tests/smoke.sh               # 7 checks, including an Ollama round-trip
 ```
 
 Start `claude` from any project. `ls` is auto-allowed, `kubectl apply` prompts
 you, `rm -rf /` is blocked.
 
-If you are on Linux/macOS and the binary download fails (no release yet, or
-GitHub unreachable), add `--from-source` — it falls back to `go build`.
-
-### B. Dev Containers (VS Code / DevPod / VSCodium)
+### D. Dev Containers (VS Code / DevPod / VSCodium)
 
 The repo ships a functional devcontainer that bind-mounts your host's
 `~/.claude/` (sharing auth), installs Claude Code CLI, and builds the
@@ -72,7 +91,7 @@ whoami && pwd                     # devbox /workspaces/smart-allow
 bash tests/smoke.sh               # all checks green
 ```
 
-### C. Wiring it into your own project
+### E. Wiring it into your own project
 
 Two common layouts:
 
@@ -186,7 +205,7 @@ Common cases:
 - `403 Forbidden` from Ollama → `OLLAMA_ORIGINS` not set to `*`.
 - Very slow first call → the model isn't in VRAM. Prime it with `ollama run qwen2.5-coder:7b "hi"` once.
 
-See also [plan-ollama-classifier.md — Annexe A](plan-ollama-classifier.md) for the original debugging table.
+See also [docs/plan-ollama-classifier.md — Annexe A](docs/plan-ollama-classifier.md) for the original debugging table.
 
 ## Install flags
 
@@ -217,8 +236,6 @@ devbox run -- task --list-all     # discover all targets
 
 ### Releasing
 
-The release pipeline mirrors [iterion](https://github.com/SocialGouv/iterion)'s:
-
 1. Merge conventional commits (`feat:`, `fix:`, …) to `main`.
 2. `version.yml` runs `release-it --ci`, bumps `package.json`, tags `vX.Y.Z`,
    creates the GitHub release.
@@ -228,6 +245,20 @@ The release pipeline mirrors [iterion](https://github.com/SocialGouv/iterion)'s:
 
 No `goreleaser` — plain `go build -trimpath -ldflags` with
 `-X internal/appinfo.Version=…` and `-X internal/appinfo.Commit=…`.
+
+### GitHub Pages (one-liner hosting)
+
+The curl-pipe installer at
+`https://socialgouv.github.io/smart-allow/install.sh` is served by GitHub
+Pages from [docs/install.sh](docs/install.sh). To enable:
+
+1. On GitHub: **Settings → Pages → Build and deployment**.
+2. Source: **Deploy from a branch** — branch `main`, folder `/docs`.
+3. Save. Pages takes ~1 min to build; after that the install URL is live.
+
+The two design docs ([docs/plan-ollama-classifier.md](docs/plan-ollama-classifier.md),
+[docs/comparison-auto-mode.md](docs/comparison-auto-mode.md)) are served
+alongside — Jekyll renders them at `socialgouv.github.io/smart-allow/<file>.html`.
 
 ## Uninstall
 
@@ -243,16 +274,28 @@ A timestamped backup of `~/.claude/settings.json` is written before the hook ent
 ## Design
 
 Full design, fast-path catalog, prompt engineering choices, and devcontainer
-debugging table: [plan-ollama-classifier.md](plan-ollama-classifier.md).
+debugging table: [docs/plan-ollama-classifier.md](docs/plan-ollama-classifier.md).
 
 Comparison with Anthropic's Auto Mode:
-[comparison-auto-mode.md](comparison-auto-mode.md).
+[docs/comparison-auto-mode.md](docs/comparison-auto-mode.md).
 
-Prior art that inspired this project:
+### On Claude Code Auto Mode
+
+Anthropic shipped its own classifier-based PreToolUse gating in April 2026.
+smart-allow and Auto Mode are complementary (see the dedicated comparison above):
+
+- [Auto Mode — Anthropic blog](https://claude.com/blog/auto-mode)
+- [Claude Code Auto Mode : permissions et autonomie — SFEIR Institute](https://institute.sfeir.com/fr/articles/claude-code-auto-mode-permissions-autonomie/)
+
+### Prior art
+
+Projects that inspired this one:
 
 - [oryband/claude-code-auto-approve](https://github.com/oryband/claude-code-auto-approve)
-- [Evaneos/agent-callable](https://github.com/Evaneos/agent-callable) ([blog](https://tech.evaneos.com/agent-callable-skip-the-boring-approvals-in-claude-code-2ddb21dc2afb))
-- [Evaneos/kubectl-readonly](https://github.com/Evaneos/kubectl-readonly) ([blog](https://tech.evaneos.com/introducing-kubectl-readonly-7ef1987c945b))
+- [Evaneos/agent-callable](https://github.com/Evaneos/agent-callable)
+  ([blog post](https://tech.evaneos.com/agent-callable-skip-the-boring-approvals-in-claude-code-2ddb21dc2afb))
+- [Evaneos/kubectl-readonly](https://github.com/Evaneos/kubectl-readonly)
+  ([blog post](https://tech.evaneos.com/introducing-kubectl-readonly-7ef1987c945b))
 
 ## License
 
