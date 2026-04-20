@@ -24,7 +24,11 @@ Everything goes through `devbox run -- task <target>`. The recipes live in
 | Command                                 | What it does                                                          |
 |-----------------------------------------|-----------------------------------------------------------------------|
 | `devbox run -- task build`              | Compile `./cmd/classify-command` → `./classify-command` (ldflags inject version + commit) |
-| `devbox run -- task install`            | Build + copy binary to `$HOME/.claude/bin/classify-command`           |
+| `devbox run -- task install`            | Build + copy binary to `$HOME/.claude/bin/classify-command` (no hook wiring) |
+| `devbox run -- task install:project`    | Build + copy + register hook in `<this-repo>/.claude/settings.json`   |
+| `devbox run -- task install:global`     | Build + copy + register hook in `~/.claude/settings.json` (all sessions) |
+| `devbox run -- task install:status`     | Report where hooks are currently wired                                |
+| `devbox run -- task uninstall`          | Interactive hook removal                                              |
 | `devbox run -- task test`               | `go test ./...` (unit tests)                                          |
 | `devbox run -- task test:race`          | Tests with race detector                                              |
 | `devbox run -- task fmt`                | `go fmt ./...`                                                        |
@@ -42,21 +46,29 @@ Interactive shell with the toolchain active: `devbox shell`.
 ## Project layout
 
 - `cmd/classify-command/` — Go entry point. Reads a PreToolUse JSON event on
-  stdin, emits `hookSpecificOutput.permissionDecision` on stdout.
-  Files: `main.go` (orchestration + emit + log), `fastpath.go`
-  (allowlist / denylist / dangerous regex), `cache.go`, `ollama.go`, `policy.go`
-  plus `*_test.go`.
+  stdin, emits `hookSpecificOutput.permissionDecision` on stdout. Subcommand
+  dispatch lives in `main.go`; actual logic split per concern:
+  - `main.go` — dispatcher + `runHook` (the hook pipeline)
+  - `install.go` — `runInstall`, `wizard`, `detectStatus`,
+    `resolveProjectRoot`, `mergeHook`, `ensureBinaryAtHome`, `installPolicies`
+  - `uninstall.go` — `runUninstall`, `removeHook`
+  - `policy_cmd.go` — `runPolicy` (`list`/`show`/`set`/`edit`)
+  - `fastpath.go`, `cache.go`, `ollama.go`, `policy.go` — hook pipeline pieces
+    (unchanged by the installer work)
+  - `*_test.go` — unit tests
 - `internal/appinfo/` — build-time identity (`Version`, `Commit`) injected via
   `-ldflags`. Source of `classify-command --version` output.
-- `policies/` — French-language Markdown policies (`strict.md`, `normal.md`,
-  `permissive.md`) fed to Ollama via the system prompt.
-- `scripts/claude-policy` — bash util to switch the active-policy symlink.
-- `.claude/settings.json` — **project-scoped** hook. Activates smart-allow
-  whenever `claude` is run from this repo. Points at the installed binary via
-  `$SMART_ALLOW_BIN` or `$HOME/.claude/bin/classify-command`.
+- `policies/` — Go package that owns the three French-language Markdown
+  policies (`strict.md`, `normal.md`, `permissive.md`). `embed.go`'s
+  `//go:embed *.md` ships them inside the binary, so the installer is
+  offline-capable after the binary download.
+- `.claude/settings.json` — **project-scoped** hook for this very repo. Wired
+  by `devbox run -- task install:project` or by the installer's
+  `--project` flag.
 - `examples/test-project/` — self-contained sandbox to exercise the binary
   without touching `~/.claude/`.
-- `.devcontainer/` — devbox-based devcontainer with Claude Code CLI auto-installed.
+- `.devcontainer/` — devbox-based devcontainer with Claude Code CLI
+  auto-installed and the hook auto-wired at project scope.
 - `.github/workflows/` — **tests.yml** (gofmt check + vet + tests on push/PR),
   **release.yml** (matrix build per goos/goarch × runner, SHA256, uploads to
   GitHub release), **version.yml** (release-it conventional-changelog bump on
@@ -66,8 +78,10 @@ Interactive shell with the toolchain active: `devbox shell`.
 - `.release-it.json` — release-it config: conventional commits, tag
   `v${version}`, GitHub release created after bump (release.yml then attaches
   built binaries).
-- `install.sh` — end-user install script (downloads binary from GitHub releases
-  or builds from source with `--from-source`).
+- `docs/install.sh` — curl-pipe bootstrap (~100 lines, POSIX sh). Downloads
+  the latest binary, verifies checksum, then `exec`s
+  `classify-command install` with whatever args the user piped. All actual
+  install logic is in the Go binary.
 - `install-host-ollama.sh` — one-shot host setup for Ollama.
 
 ## Pipeline inside the classifier
@@ -137,11 +151,27 @@ Adjust `main` release target by landing conventional commits (`feat:`, `fix:`,
 After any change to `cmd/classify-command/`:
 
 ```bash
-devbox run -- task check         # lint + unit tests
-devbox run -- task install       # rebuild and update ~/.claude/bin/
-devbox run -- task smoke:project # isolated end-to-end against Ollama
+devbox run -- task check           # lint + unit tests
+devbox run -- task install         # rebuild and update ~/.claude/bin/
+devbox run -- task install:status  # confirm the hook is still wired
+devbox run -- task smoke:project   # isolated end-to-end against Ollama
 ```
 
 Then trigger a Bash command **in this Claude Code session** — the hook fires
 automatically via `.claude/settings.json`. A command with the substring
 `rm -rf /` should be blocked with `fast-path: hard-deny pattern`.
+
+## Installer subcommands (inside the binary)
+
+- `classify-command install` — interactive wizard; prints status, then a
+  numbered menu to install/reinstall globally, install/reinstall for the
+  current project (git root walk-up), uninstall, or quit.
+- `classify-command install --global|--project|--here|--path DIR` —
+  non-interactive, optionally with `--yes`.
+- `classify-command install --status` — just prints the current state.
+- `classify-command uninstall [--global|--project|--all|--here|--path DIR]`.
+- `classify-command policy list|show|set NAME|edit` — replaces the former
+  `scripts/claude-policy` bash util.
+
+Hook-mode invocation (what Claude Code runs) is unchanged: if the first arg
+is empty or starts with `-`, the binary reads stdin and runs the classifier.

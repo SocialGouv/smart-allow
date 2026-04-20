@@ -2,7 +2,16 @@
 // Lit un événement JSON sur stdin, émet le verdict au format
 // hookSpecificOutput.permissionDecision (Claude Code ≥ 2.1).
 //
-// Pipeline:
+// Subcommands:
+//
+//	classify-command            # hook mode (stdin: PreToolUse JSON)
+//	classify-command install    # interactive / scoped installer
+//	classify-command uninstall  # remove hook from global / project settings
+//	classify-command policy …   # switch / inspect / edit active policy
+//	classify-command --version
+//	classify-command --help
+//
+// Pipeline of hook mode:
 //  1. fast-path déterministe (allowlist/denylist)
 //  2. cache local (TTL 1h par défaut)
 //  3. LLM local via Ollama
@@ -30,24 +39,63 @@ var (
 )
 
 func main() {
-	// Minimal flag handling: --version / -v prints the build identity and exits.
-	// Everything else falls through to the hook pipeline (which reads stdin).
-	for _, a := range os.Args[1:] {
-		switch a {
-		case "--version", "-v":
-			fmt.Printf("%s %s\n", appinfo.Name, appinfo.FullVersion())
-			return
-		case "--help", "-h":
-			fmt.Fprintf(os.Stderr,
-				"%s %s — Claude Code PreToolUse Bash classifier.\n\n"+
-					"Usage: %s  (reads a PreToolUse JSON event on stdin, writes a\n"+
-					"         hookSpecificOutput decision JSON on stdout)\n\n"+
-					"Flags:\n  -v, --version   print version and exit\n  -h, --help      this help\n",
-				appinfo.Name, appinfo.FullVersion(), appinfo.Name)
-			return
-		}
+	first := ""
+	if len(os.Args) > 1 {
+		first = os.Args[1]
 	}
+	switch first {
+	case "--version", "-v":
+		fmt.Printf("%s %s\n", appinfo.Name, appinfo.FullVersion())
+		return
+	case "--help", "-h":
+		printHelp()
+		return
+	case "install":
+		os.Exit(runInstall(os.Args[2:]))
+	case "uninstall":
+		os.Exit(runUninstall(os.Args[2:]))
+	case "policy":
+		os.Exit(runPolicy(os.Args[2:]))
+	default:
+		// Hook mode: empty args or any flag argument (backward compat).
+		os.Exit(runHook(os.Args[1:]))
+	}
+}
 
+func printHelp() {
+	n := appinfo.Name
+	fmt.Fprintf(os.Stderr,
+		`%s %s — Claude Code PreToolUse Bash classifier.
+
+Usage:
+  %s                                     # hook mode (stdin: PreToolUse JSON)
+  %s --version
+  %s --help
+
+  %s install [--global|--project|--here|--path DIR|--status|--yes]
+  %s uninstall [--global|--project|--here|--path DIR|--all|--yes]
+
+  %s policy list
+  %s policy show
+  %s policy set {strict|normal|permissive}
+  %s policy edit
+
+Env:
+  OLLAMA_HOST                  default http://127.0.0.1:11434
+  CLAUDE_CLASSIFIER_MODEL      default qwen2.5-coder:7b
+  CLAUDE_CLASSIFIER_TIMEOUT    seconds, default 12
+  CLAUDE_CLASSIFIER_CACHE_TTL  seconds, default 3600
+  CLAUDE_CLASSIFIER_CACHE_DIR  default $HOME/.claude/classifier-cache
+  CLAUDE_CLASSIFIER_LOG        default $HOME/.claude/classifier.log
+  CLAUDE_HOOK_DEBUG=1          stderr debug trace
+`,
+		n, appinfo.FullVersion(), n, n, n, n, n, n, n, n, n)
+}
+
+// runHook is the original hook pipeline, extracted so the main dispatcher can
+// route non-subcommand invocations here. Reads a PreToolUse JSON event on
+// stdin, writes a hookSpecificOutput JSON envelope on stdout.
+func runHook(_ []string) int {
 	home, _ := os.UserHomeDir()
 
 	cacheDir := envOr("CLAUDE_CLASSIFIER_CACHE_DIR", filepath.Join(home, ".claude", "classifier-cache"))
@@ -56,7 +104,7 @@ func main() {
 	inputBytes, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		emit("ask", fmt.Sprintf("hook read error: %v", err))
-		return
+		return 0
 	}
 
 	var event struct {
@@ -67,7 +115,7 @@ func main() {
 	}
 	if err := json.Unmarshal(inputBytes, &event); err != nil {
 		emit("ask", fmt.Sprintf("invalid hook input: %v", err))
-		return
+		return 0
 	}
 
 	command := event.ToolInput.Command
@@ -79,7 +127,7 @@ func main() {
 
 	if command == "" {
 		emit("approve", "empty command")
-		return
+		return 0
 	}
 
 	// 1. Fast-path
@@ -92,7 +140,7 @@ func main() {
 			"decision": "approve",
 			"via":      "fast-path",
 		})
-		return
+		return 0
 	case "deny":
 		debugf("fast-path DENY: %s", head(command, 80))
 		emit("deny", "fast-path: hard-deny pattern")
@@ -101,7 +149,7 @@ func main() {
 			"decision": "deny",
 			"via":      "fast-path",
 		})
-		return
+		return 0
 	}
 
 	// 2. Cache
@@ -118,7 +166,7 @@ func main() {
 			"via":      "cache",
 			"policy":   policySource,
 		})
-		return
+		return 0
 	}
 
 	// 3. Ollama
@@ -133,7 +181,7 @@ func main() {
 			"via":      "fail-safe",
 			"error":    head(err.Error(), 200),
 		})
-		return
+		return 0
 	}
 
 	cacheSet(cacheDir, key, entry)
@@ -147,6 +195,7 @@ func main() {
 		"model":    envOllamaModel,
 		"policy":   policySource,
 	})
+	return 0
 }
 
 // emit writes the Claude Code hookSpecificOutput JSON envelope to stdout.

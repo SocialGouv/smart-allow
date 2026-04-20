@@ -32,19 +32,31 @@ Claude Code (host or devcontainer)
 
 ## Quickstart
 
-### A. One-liner (recommended)
+### A. One-liner bootstrap (recommended)
 
 ```bash
+# Download the binary and open the interactive installer.
 curl -fsSL https://socialgouv.github.io/smart-allow/install.sh | sh
 ```
 
-This downloads the latest release binary + the three Markdown policies, and
-wires the `PreToolUse` Bash hook into `~/.claude/settings.json`. It does
-**not** install or configure Ollama itself — do that once with
-[`install-host-ollama.sh`](install-host-ollama.sh) (see step B).
+The bootstrap downloads the latest release binary into `$HOME/.claude/bin/`
+then hands off to its `install` subcommand. The installer opens a numbered
+menu: **install globally** (all Claude Code sessions), **install for this
+project only** (current git root), **switch**, **uninstall**, **quit**. It
+writes the 3 Markdown policies and the active-policy symlink the first time.
 
-Env overrides: `VERSION=v0.1.2`, `INSTALL_DIR=/usr/local/bin`, `NO_HOOK=1`,
-`NO_POLICIES=1`.
+Non-interactive variants (pass flags after `--` in the pipe):
+
+```bash
+curl -fsSL https://socialgouv.github.io/smart-allow/install.sh | sh -s -- --global --yes
+curl -fsSL https://socialgouv.github.io/smart-allow/install.sh | sh -s -- --project --yes
+curl -fsSL https://socialgouv.github.io/smart-allow/install.sh | sh -s -- --status
+```
+
+Env overrides for the bootstrap: `VERSION=v0.2.0`, `INSTALL_DIR=/usr/local/bin`.
+
+Once installed, use `classify-command install` any time to re-open the wizard
+or `classify-command install --status` to see what's wired where.
 
 ### B. Ollama on the host (once)
 
@@ -60,18 +72,21 @@ model pulled (default: `qwen2.5-coder:7b`).
 
 ```bash
 git clone https://github.com/SocialGouv/smart-allow && cd smart-allow
-./install.sh                      # --from-source optional: builds via go build
-bash tests/smoke.sh               # 7 checks, including an Ollama round-trip
+devbox run -- task install:project    # build + wire hook for this repo only
+bash tests/smoke.sh                   # 7 checks, including an Ollama round-trip
 ```
 
-Start `claude` from any project. `ls` is auto-allowed, `kubectl apply` prompts
-you, `rm -rf /` is blocked.
+Start `claude` from the repo. `ls` is auto-allowed, `kubectl apply` prompts
+you, `rm -rf /` is blocked. Switch scopes any time with
+`classify-command install` (wizard) or the `devbox run -- task install:global`
+target.
 
 ### D. Dev Containers (VS Code / DevPod / VSCodium)
 
 The repo ships a functional devcontainer that bind-mounts your host's
-`~/.claude/` (sharing auth), installs Claude Code CLI, and builds the
-classifier via devbox.
+`~/.claude/` (sharing auth), installs Claude Code CLI, builds the classifier
+via devbox, and wires the hook at **project scope** (so it only fires when
+Claude Code runs from this workspace).
 
 ```bash
 # Host setup, once:
@@ -84,40 +99,40 @@ classifier via devbox.
 devpod up /path/to/smart-allow --ide vscodium
 ```
 
-Inside the container, verify:
-
-```bash
-whoami && pwd                     # devbox /workspaces/smart-allow
-bash tests/smoke.sh               # all checks green
-```
-
 ### E. Wiring it into your own project
-
-Two common layouts:
-
-**1. As a sibling clone.** In your project's
-`.devcontainer/devcontainer.json`, merge the snippet from
-[examples/devcontainer.json](examples/devcontainer.json) (adds
-`host.docker.internal`, sets `OLLAMA_HOST`, mounts smart-allow as a sibling,
-runs `install.sh`).
-
-**2. As a submodule.**
 
 ```bash
 cd your-project
-git submodule add https://github.com/SocialGouv/smart-allow vendor/smart-allow
+curl -fsSL https://socialgouv.github.io/smart-allow/install.sh | sh -s -- --project --yes
 ```
 
-Then in your devcontainer:
+The `--project` flag walks up from CWD to the nearest `.git/` and writes the
+hook into `<repo-root>/.claude/settings.json`. Override the target with
+`--here` (current dir, no walk-up) or `--path <dir>` (arbitrary).
 
-```jsonc
-"postCreateCommand": "bash ${containerWorkspaceFolder}/vendor/smart-allow/install.sh --no-path-update"
+Alternatively, if your project uses a devcontainer, merge the snippet from
+[examples/devcontainer.json](examples/devcontainer.json) to get the
+`host.docker.internal` wiring and run the curl-pipe bootstrap from
+`postCreateCommand`.
+
+## Managing the install
+
+```bash
+classify-command install --status     # show where the hook is wired
+classify-command install              # open the interactive wizard
+classify-command install --global     # force global scope
+classify-command install --project    # force project scope (git-root default)
+classify-command install --here       # force project scope = CWD
+classify-command install --path DIR   # force project scope = DIR
+
+classify-command uninstall            # interactive removal
+classify-command uninstall --all      # remove both global and project hooks
 ```
 
 ## Switching policies
 
-Three policies ship in [policies/](policies/) and are installed to
-`~/.claude/policies/`:
+Three policies ship in [policies/](policies/) (embedded in the binary) and get
+deployed to `~/.claude/policies/` on first install:
 
 | Policy       | When to use                                                                   |
 |--------------|-------------------------------------------------------------------------------|
@@ -125,21 +140,20 @@ Three policies ship in [policies/](policies/) and are installed to
 | `normal`     | Everyday dev. Reads auto-allowed, writes outside project ask.                 |
 | `permissive` | Throwaway containers. Allow broadly, still block `rm -rf /` and secret edits. |
 
-Switch with the included helper:
-
 ```bash
-claude-policy strict        # activate strict
-claude-policy show          # print the currently active policy path
-claude-policy list          # list available policies
+classify-command policy list          # the three shipped policies
+classify-command policy show          # current active-policy target
+classify-command policy set strict    # repoint ~/.claude/active-policy.md
+classify-command policy edit          # $EDITOR on the active policy
 ```
 
 ### Per-project override
 
 Drop a `.claude/session-policy.md` inside any project to override the global
-policy for that project only. It takes priority over the global
+active policy for that project only. It takes priority over
 `~/.claude/active-policy.md`. See
-[examples/session-policy.md](examples/session-policy.md) and the concrete demo
-in [examples/test-project/](examples/test-project/).
+[examples/session-policy.md](examples/session-policy.md) and the concrete
+demo in [examples/test-project/](examples/test-project/).
 
 ## Customization
 
@@ -207,19 +221,6 @@ Common cases:
 
 See also [docs/plan-ollama-classifier.md — Annexe A](docs/plan-ollama-classifier.md) for the original debugging table.
 
-## Install flags
-
-```
-./install.sh [--from-source] [--version vX.Y.Z] [--no-global-hook] [--force] [--no-path-update] [--dry-run]
-```
-
-- `--from-source` — build the binary locally via `go build` (needs Go installed) instead of downloading a release.
-- `--version vX.Y.Z` — pin a specific release tag. Default: latest.
-- `--no-global-hook` — install the binary and policies but do **not** merge the PreToolUse hook into `~/.claude/settings.json`. Use this when you'll register the hook project-by-project only.
-- `--force` — overwrite existing policy files.
-- `--no-path-update` — skip shell rc (`~/.bashrc`, `~/.zshrc`) PATH update.
-- `--dry-run` — print the plan, do nothing.
-
 ## Developer workflow (this repo)
 
 Everything goes through [devbox](https://www.jetify.com/devbox) (pins Go,
@@ -227,11 +228,15 @@ Everything goes through [devbox](https://www.jetify.com/devbox) (pins Go,
 [CLAUDE.md](CLAUDE.md) for the full guide.
 
 ```bash
-devbox run -- task build          # compile → ./classify-command (ldflags inject version)
-devbox run -- task check          # go fmt + go vet + go test
-devbox run -- task install        # copy binary to ~/.claude/bin/classify-command
-devbox run -- task smoke:project  # end-to-end against Ollama, project-scoped
-devbox run -- task --list-all     # discover all targets
+devbox run -- task build            # compile → ./classify-command (ldflags inject version)
+devbox run -- task check            # go fmt + go vet + go test
+devbox run -- task install          # copy binary to ~/.claude/bin/ (no hook wiring)
+devbox run -- task install:project  # + wire hook at project scope (this repo)
+devbox run -- task install:global   # + wire hook globally
+devbox run -- task install:status   # report where hooks are wired
+devbox run -- task uninstall        # interactive hook removal
+devbox run -- task smoke:project    # end-to-end against Ollama, project-scoped
+devbox run -- task --list-all       # discover all targets
 ```
 
 ### Releasing
@@ -263,13 +268,16 @@ alongside — Jekyll renders them at `socialgouv.github.io/smart-allow/<file>.ht
 ## Uninstall
 
 ```bash
-./uninstall.sh                      # removes the hook, keeps your policies + cache + log
-./uninstall.sh --purge-policies     # also removes ~/.claude/policies/
-./uninstall.sh --purge-cache        # also removes ~/.claude/classifier-cache/
-./uninstall.sh --purge-log          # also removes ~/.claude/classifier.log
+classify-command uninstall              # interactive
+classify-command uninstall --global     # remove hook from ~/.claude/settings.json
+classify-command uninstall --project    # remove hook from <git-root>/.claude/settings.json
+classify-command uninstall --all --yes  # remove both, no prompts
 ```
 
-A timestamped backup of `~/.claude/settings.json` is written before the hook entry is removed.
+A timestamped backup (`settings.json.bak-<YYYYMMDD-HHMMSS>`) is written before
+any change. The binary itself and the Markdown policies at
+`~/.claude/policies/` are left in place; delete those manually if you want a
+clean slate.
 
 ## Design
 

@@ -28,10 +28,34 @@ tasks:
       - "{{.BINARY}}"
 
   install:
-    desc: Build and install to $HOME/.claude/bin
+    desc: Build and copy binary to $HOME/.claude/bin (no hook wiring)
     deps: [build]
     cmds:
       - install -Dm755 {{.BINARY}} $HOME/.claude/bin/{{.BINARY}}
+
+  install:project:
+    desc: Build, install, and register the hook for this git project
+    deps: [install]
+    cmds:
+      - ./{{.BINARY}} install --project --yes
+
+  install:global:
+    desc: Build, install, and register the hook globally (all Claude Code sessions)
+    deps: [install]
+    cmds:
+      - ./{{.BINARY}} install --global --yes
+
+  install:status:
+    desc: Print where the binary and hooks currently live
+    deps: [install]
+    cmds:
+      - ./{{.BINARY}} install --status
+
+  uninstall:
+    desc: Remove the hook (interactive) — leaves binary + policies in place
+    deps: [install]
+    cmds:
+      - ./{{.BINARY}} uninstall
 
   test:
     desc: Run unit tests

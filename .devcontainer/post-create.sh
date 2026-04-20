@@ -9,8 +9,8 @@ set -euo pipefail
 echo ">> install Claude Code CLI"
 npm install -g @anthropic-ai/claude-code
 
-echo ">> build and install classify-command via task (devbox-provided Go)"
-devbox run -- task install
+echo ">> build classify-command and wire it into this project's .claude/settings.json"
+devbox run -- task install:project
 
 echo ">> link claude project history if host path differs from container path"
 HOST_KEY="$(echo "${HOST_WORKSPACE:-}" | tr '/' '-')"
@@ -23,16 +23,19 @@ fi
 
 cat <<'EOF'
 
->> smart-allow project-scoped hook is wired in .claude/settings.json
-   (the global ~/.claude/settings.json is the host's and stays untouched)
+>> smart-allow hook is wired at project scope (.claude/settings.json in this repo).
+   It fires only when Claude Code runs from this workspace — your host's
+   global ~/.claude/settings.json is left untouched.
 
 >> done. Start Claude Code with:  claude
 
->> Useful commands (all via devbox + task):
-     devbox run -- task build          # rebuild the Go classifier
-     devbox run -- task install        # rebuild and copy to ~/.claude/bin/
-     devbox run -- task test           # go test ./...
-     devbox run -- task check          # lint + test
-     devbox run -- task smoke:project  # isolated end-to-end against Ollama
-     devbox run -- task --list-all     # discover all tasks
+>> Useful commands (via devbox + task):
+     devbox run -- task install:status  # show where the hook is installed
+     devbox run -- task install:global  # also register it for every Claude Code session
+     devbox run -- task uninstall       # interactive removal
+     devbox run -- task build           # rebuild after Go source changes
+     devbox run -- task test            # go test ./...
+     devbox run -- task check           # lint + test
+     devbox run -- task smoke:project   # isolated end-to-end against Ollama
+     devbox run -- task --list-all      # discover all tasks
 EOF
