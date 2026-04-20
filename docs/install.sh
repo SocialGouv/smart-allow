@@ -37,7 +37,9 @@ detect_platform() {
         *) error "unsupported architecture: $ARCH" ;;
     esac
     EXT=""
-    [ "$OS" = "windows" ] && EXT=".exe"
+    if [ "$OS" = "windows" ]; then
+        EXT=".exe"
+    fi
 }
 
 fetch() {
@@ -101,8 +103,9 @@ MSG
         else
             ACTUAL=""
         fi
-        [ -n "$ACTUAL" ] && [ "$ACTUAL" != "$EXPECTED" ] \
-            && error "checksum mismatch (expected $EXPECTED, got $ACTUAL)"
+        if [ -n "$ACTUAL" ] && [ "$ACTUAL" != "$EXPECTED" ]; then
+            error "checksum mismatch (expected $EXPECTED, got $ACTUAL)"
+        fi
     fi
 
     DEST="${INSTALL_DIR}/${BINARY_NAME}${EXT}"
@@ -131,16 +134,19 @@ install_policies() {
         fi
     done
     # Activate 'normal' as default if no active-policy symlink yet.
+    mkdir -p "$HOME/.claude"
     if [ ! -e "$HOME/.claude/active-policy.md" ] && [ ! -L "$HOME/.claude/active-policy.md" ]; then
         ln -sfn "${POLICIES_DIR}/normal.md" "$HOME/.claude/active-policy.md"
         info "activated policy: normal"
     fi
-    # Install claude-policy util (pure bash, 25 lines).
+    # Install claude-policy util (pure bash, 25 lines). Best-effort.
     UTIL_URL="https://raw.githubusercontent.com/${REPO}/${VERSION}/scripts/claude-policy"
-    fetch "$UTIL_URL" "${INSTALL_DIR}/claude-policy" 2>/dev/null \
-        && chmod +x "${INSTALL_DIR}/claude-policy" \
-        && info "util installed: ${INSTALL_DIR}/claude-policy" \
-        || warn "claude-policy util download skipped"
+    if fetch "$UTIL_URL" "${INSTALL_DIR}/claude-policy" 2>/dev/null; then
+        chmod +x "${INSTALL_DIR}/claude-policy"
+        info "util installed: ${INSTALL_DIR}/claude-policy"
+    else
+        warn "claude-policy util download skipped"
+    fi
 }
 
 merge_hook() {
@@ -151,7 +157,10 @@ merge_hook() {
     fi
     BIN_PATH="${INSTALL_DIR}/${BINARY_NAME}${EXT}"
     STAMP="$(date +%Y%m%d-%H%M%S)"
-    [ -f "$SETTINGS" ] && cp "$SETTINGS" "${SETTINGS}.bak-${STAMP}"
+    if [ -f "$SETTINGS" ]; then
+        cp "$SETTINGS" "${SETTINGS}.bak-${STAMP}"
+    fi
+    mkdir -p "$(dirname "$SETTINGS")"
     python3 - "$SETTINGS" "$BIN_PATH" <<'PY'
 import json, os, sys
 settings_path, bin_path = sys.argv[1], sys.argv[2]
