@@ -140,7 +140,18 @@ func runInstall(args []string) int {
 		targets = append(targets, st.GlobalPath)
 	} else {
 		if st.ProjectRoot == "" {
-			fmt.Fprintln(os.Stderr, "install: could not resolve project root")
+			fmt.Fprintln(os.Stderr,
+				"install: no git repository found from CWD.\n"+
+					"  → pass --here to install into CWD anyway,\n"+
+					"  → pass --path <dir> for an arbitrary directory,\n"+
+					"  → pass --global to install for every Claude Code session.")
+			return 2
+		}
+		if st.ProjectPath == st.GlobalPath {
+			fmt.Fprintln(os.Stderr,
+				"install: project path equals global path — refusing to install.\n"+
+					"  CWD ("+st.ProjectRoot+") resolves to the same settings.json as --global.\n"+
+					"  Use --global directly, or --path DIR to pick a different target.")
 			return 2
 		}
 		targets = append(targets, st.ProjectPath)
@@ -173,8 +184,11 @@ func runInstall(args []string) int {
 // ---------- resolveProjectRoot ----------
 
 // resolveProjectRoot picks the directory that will host the project-scoped
-// .claude/settings.json. Priority: --path > --here > git walk-up > cwd.
-// Returns (root, fromGit, err).
+// .claude/settings.json. Priority: --path > --here > git walk-up.
+// Returns (root, fromGit, err). When no explicit flag is set and no .git is
+// found walking up from CWD, returns ("", false, nil) — i.e. "no project
+// detected" — instead of silently falling back to CWD (which on a fresh
+// shell in $HOME would collide with the global scope).
 func resolveProjectRoot(flagHere bool, flagPath string) (string, bool, error) {
 	if flagPath != "" {
 		abs, err := filepath.Abs(flagPath)
@@ -194,7 +208,7 @@ func resolveProjectRoot(flagHere bool, flagPath string) (string, bool, error) {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return cwd, false, nil // no .git anywhere up the tree
+			return "", false, nil // no .git anywhere up the tree
 		}
 		dir = parent
 	}
@@ -216,7 +230,7 @@ func detectStatus(f *installFlags) (*status, error) {
 	}
 	st.GlobalInstalled = hasHookEntry(st.GlobalPath)
 
-	if root, fromGit, err := resolveProjectRoot(f.here, f.path); err == nil {
+	if root, fromGit, err := resolveProjectRoot(f.here, f.path); err == nil && root != "" {
 		st.ProjectRoot = root
 		st.ProjectFromGit = fromGit
 		st.ProjectPath = filepath.Join(root, ".claude", "settings.json")
@@ -448,15 +462,19 @@ func printStatus(st *status) {
 	fmt.Println("Status:")
 	fmt.Printf("  binary:  %s\n", st.BinaryPath)
 	fmt.Printf("  global:  %s (%s)\n", installLabel(st.GlobalInstalled), st.GlobalPath)
-	src := ""
-	if st.ProjectRoot != "" {
-		if st.ProjectFromGit {
-			src = ", git root"
-		} else {
-			src = ", cwd"
-		}
+	if st.ProjectRoot == "" {
+		fmt.Println("  project: no project detected (no .git above CWD; use --here or --path to override)")
+		return
 	}
-	fmt.Printf("  project: %s (%s%s)\n", installLabel(st.ProjectInstalled), st.ProjectPath, src)
+	src := ", git root"
+	if !st.ProjectFromGit {
+		src = ", forced by flag"
+	}
+	label := installLabel(st.ProjectInstalled)
+	if st.ProjectPath == st.GlobalPath {
+		label += " — same file as global scope"
+	}
+	fmt.Printf("  project: %s (%s%s)\n", label, st.ProjectPath, src)
 }
 
 func installLabel(b bool) string {
@@ -482,7 +500,7 @@ func wizard(st *status) int {
 	} else {
 		cs = append(cs, choice{"Reinstall globally (refresh binary path)", []string{"--global", "--yes"}, nil})
 	}
-	if st.ProjectRoot != "" {
+	if st.ProjectRoot != "" && st.ProjectPath != st.GlobalPath {
 		label := fmt.Sprintf("Install for this project only (%s)", st.ProjectRoot)
 		if st.ProjectInstalled {
 			label = fmt.Sprintf("Reinstall for this project (%s)", st.ProjectRoot)

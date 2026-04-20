@@ -75,22 +75,47 @@ func TestResolveProjectRoot_GitWalkUp(t *testing.T) {
 	}
 }
 
-func TestResolveProjectRoot_NoGitFallsBackToCwd(t *testing.T) {
+func TestResolveProjectRoot_NoGitReturnsEmpty(t *testing.T) {
 	orig, _ := os.Getwd()
 	defer os.Chdir(orig)
 
-	// Use a subdirectory of /tmp that has no .git anywhere up the chain.
+	// The devcontainer's /workspaces/… is itself a repo, so a plain t.TempDir()
+	// may sit under a .git. We need a directory tree that definitely has no
+	// .git anywhere on the way up — put one under /tmp with a fake root.
 	tmp := t.TempDir()
-	if err := os.Chdir(tmp); err != nil {
+	isolated := filepath.Join(tmp, "not-a-repo")
+	if err := os.MkdirAll(isolated, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	// If the ancestor chain happens to contain a .git, skip — the test
+	// fixture can't guarantee a clean walk-up on every host.
+	if ancestorHasGit(isolated) {
+		t.Skip("ancestor of TempDir has a .git, cannot exercise no-git fallback")
+	}
+	if err := os.Chdir(isolated); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
-	_, fromGit, err := resolveProjectRoot(false, "")
+	root, fromGit, err := resolveProjectRoot(false, "")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	// /tmp may sit under a directory that is itself a repo in the devcontainer
-	// — so we don't assert fromGit == false, only that the call succeeds.
-	_ = fromGit
+	if root != "" {
+		t.Errorf("no-git walk-up should return empty, got %q (fromGit=%v)", root, fromGit)
+	}
+}
+
+func ancestorHasGit(start string) bool {
+	d := start
+	for {
+		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
+			return true
+		}
+		p := filepath.Dir(d)
+		if p == d {
+			return false
+		}
+		d = p
+	}
 }
 
 func TestMergeHook_FreshFile(t *testing.T) {
