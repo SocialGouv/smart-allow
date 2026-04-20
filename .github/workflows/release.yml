@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - "v*"
+  # Manual replay for an existing tag (e.g. when an earlier run was skipped).
+  # Usage: gh workflow run "📦 Release" --ref vX.Y.Z
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
