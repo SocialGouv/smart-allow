@@ -11,9 +11,13 @@
 # shell-agnostic.
 #
 # Env overrides:
-#   VERSION=v0.1.2              Pin a specific release (default: latest)
-#   INSTALL_DIR=/usr/local/bin   Binary destination (default: $HOME/.claude/bin)
-#   NO_PATH_UPDATE=1             Don't append a PATH export to ~/.bashrc / ~/.zshrc
+#   VERSION=v0.1.2               Pin a specific release (default: latest)
+#   INSTALL_DIR=/usr/local/bin    Alternate binary destination
+#                                 (default: $HOME/.claude/bin — sits next to
+#                                 the rest of the claude-code state; a PATH
+#                                 export is appended to ~/.bashrc / ~/.zshrc
+#                                 automatically, effective in the next shell.)
+#   NO_PATH_UPDATE=1              Skip the shell-rc PATH export
 set -eu
 
 REPO="SocialGouv/smart-allow"

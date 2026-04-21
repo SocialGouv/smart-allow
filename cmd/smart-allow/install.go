@@ -134,7 +134,7 @@ func runInstall(args []string) int {
 		return wizard(st)
 	}
 
-	binPath, err := ensureBinaryAtHome(st.Home)
+	binPath, err := ensureBinaryPath(st.Home)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "install:", err)
 		return 1
@@ -355,18 +355,27 @@ func mergeHook(settingsPath, binaryPath string) error {
 	return os.WriteFile(settingsPath, out, 0o644)
 }
 
-// ---------- binary self-install ----------
+// ---------- binary location ----------
 
-// ensureBinaryAtHome copies the running binary to $HOME/.claude/bin/smart-allow
-// if it isn't already there. Returns the final stable path, which is what
-// settings.json should reference.
-func ensureBinaryAtHome(home string) (string, error) {
-	dest := installedBinaryPath(home)
+// ensureBinaryPath returns the absolute path settings.json should reference
+// to invoke the binary. When the running executable already sits in a
+// directory on $PATH (typical for users who installed via the bootstrap
+// into /usr/local/bin or $HOME/.local/bin), we use it as-is so
+// `smart-allow <cmd>` keeps working from any directory. Otherwise — the
+// contributor-from-a-checkout case — we copy into $HOME/.claude/bin so
+// the hook reference survives deletion of the checkout.
+func ensureBinaryPath(home string) (string, error) {
 	self, err := os.Executable()
 	if err != nil {
 		return "", err
 	}
 	absSelf, _ := filepath.Abs(self)
+
+	if isDirOnPATH(filepath.Dir(absSelf)) {
+		return absSelf, nil
+	}
+
+	dest := installedBinaryPath(home)
 	absDest, _ := filepath.Abs(dest)
 	if absSelf == absDest {
 		return dest, nil
@@ -397,6 +406,29 @@ func ensureBinaryAtHome(home string) (string, error) {
 		return "", err
 	}
 	return dest, nil
+}
+
+// isDirOnPATH reports whether the given directory is listed in the current
+// process's $PATH. Used to decide whether the running binary is already
+// callable by name from any shell.
+func isDirOnPATH(dir string) bool {
+	target, err := filepath.Abs(dir)
+	if err != nil {
+		return false
+	}
+	for _, p := range filepath.SplitList(os.Getenv("PATH")) {
+		if p == "" {
+			continue
+		}
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			continue
+		}
+		if abs == target {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------- policies deployment ----------

@@ -39,12 +39,26 @@ Claude Code (host or devcontainer)
 curl -fsSL https://socialgouv.github.io/smart-allow/install.sh | sh
 ```
 
-The bootstrap downloads the latest release binary into `$HOME/.claude/bin/`,
-appends a PATH export to your shell rc if needed, and hands off to the
-`install` subcommand. The installer opens a numbered menu with the actions
-that make sense for your current state — install globally, install for this
-project only (current git root), uninstall, quit. It writes the 3 Markdown
-policies and the active-policy symlink the first time.
+The bootstrap downloads the latest release binary into
+`$HOME/.claude/bin/`, appends a `PATH` export to your shell rc
+(`~/.bashrc` or `~/.zshrc`) if it isn't already on `$PATH`, and hands
+off to the `install` subcommand. The new `PATH` entry is effective on
+the **next shell** (either start a new terminal or
+`source ~/.bashrc`). The installer opens a numbered menu with the
+actions that make sense for your current state: install globally,
+install for this project only (current git root), uninstall, quit. It
+writes the 3 Markdown policies and the active-policy symlink the first
+time.
+
+To install into a PATH-native location instead (no shell-rc changes
+needed), override `INSTALL_DIR`:
+
+```bash
+curl -fsSL https://socialgouv.github.io/smart-allow/install.sh | INSTALL_DIR=/usr/local/bin sh
+```
+
+Unless `/usr/local/bin` is writable, `sudo` will be requested for that
+single `mv` + `chmod`.
 
 Non-interactive variants (pass flags after `--` in the pipe):
 
@@ -54,7 +68,8 @@ curl -fsSL https://socialgouv.github.io/smart-allow/install.sh | sh -s -- --proj
 curl -fsSL https://socialgouv.github.io/smart-allow/install.sh | sh -s -- --status
 ```
 
-Env overrides for the bootstrap: `VERSION=v0.2.0`, `INSTALL_DIR=/usr/local/bin`.
+Env overrides for the bootstrap: `VERSION=vX.Y.Z`, `INSTALL_DIR=...`,
+`NO_PATH_UPDATE=1`.
 
 Once installed, use `smart-allow install` any time to re-open the wizard
 or `smart-allow install --status` to see what's wired where.
