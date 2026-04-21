@@ -1,6 +1,6 @@
 {
   "name": "smart-allow",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "Local-LLM gatekeeper for Claude Code's PreToolUse Bash hook.",
   "repository": "github.com/SocialGouv/smart-allow",
