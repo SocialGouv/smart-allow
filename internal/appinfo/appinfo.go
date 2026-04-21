@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	Name    = "classify-command"
+	Name    = "smart-allow"
 	RepoURL = "https://github.com/SocialGouv/smart-allow"
 )
 

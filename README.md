@@ -16,7 +16,7 @@ Claude Code (host or devcontainer)
         │
         │ PreToolUse Bash
         ▼
-  classify-command (Go binary) ──► Ollama on host (http://host.docker.internal:11434)
+  smart-allow (Go binary) ──► Ollama on host (http://host.docker.internal:11434)
         │                                    │
         │                                    └─► qwen2.5-coder:7b (configurable)
         ▼
@@ -39,11 +39,12 @@ Claude Code (host or devcontainer)
 curl -fsSL https://socialgouv.github.io/smart-allow/install.sh | sh
 ```
 
-The bootstrap downloads the latest release binary into `$HOME/.claude/bin/`
-then hands off to its `install` subcommand. The installer opens a numbered
-menu: **install globally** (all Claude Code sessions), **install for this
-project only** (current git root), **switch**, **uninstall**, **quit**. It
-writes the 3 Markdown policies and the active-policy symlink the first time.
+The bootstrap downloads the latest release binary into `$HOME/.claude/bin/`,
+appends a PATH export to your shell rc if needed, and hands off to the
+`install` subcommand. The installer opens a numbered menu with the actions
+that make sense for your current state — install globally, install for this
+project only (current git root), uninstall, quit. It writes the 3 Markdown
+policies and the active-policy symlink the first time.
 
 Non-interactive variants (pass flags after `--` in the pipe):
 
@@ -55,8 +56,8 @@ curl -fsSL https://socialgouv.github.io/smart-allow/install.sh | sh -s -- --stat
 
 Env overrides for the bootstrap: `VERSION=v0.2.0`, `INSTALL_DIR=/usr/local/bin`.
 
-Once installed, use `classify-command install` any time to re-open the wizard
-or `classify-command install --status` to see what's wired where.
+Once installed, use `smart-allow install` any time to re-open the wizard
+or `smart-allow install --status` to see what's wired where.
 
 ### B. Ollama on the host (once)
 
@@ -78,7 +79,7 @@ bash tests/smoke.sh                   # 7 checks, including an Ollama round-trip
 
 Start `claude` from the repo. `ls` is auto-allowed, `kubectl apply` prompts
 you, `rm -rf /` is blocked. Switch scopes any time with
-`classify-command install` (wizard) or the `devbox run -- task install:global`
+`smart-allow install` (wizard) or the `devbox run -- task install:global`
 target.
 
 ### D. Dev Containers (VS Code / DevPod / VSCodium)
@@ -117,17 +118,62 @@ Alternatively, if your project uses a devcontainer, merge the snippet from
 
 ## Managing the install
 
-```bash
-classify-command install --status     # show where the hook is wired
-classify-command install              # open the interactive wizard
-classify-command install --global     # force global scope
-classify-command install --project    # force project scope (git-root default)
-classify-command install --here       # force project scope = CWD
-classify-command install --path DIR   # force project scope = DIR
+The binary is meant to be installed **once**, and then toggled per repo.
+Two short aliases make that flow obvious:
 
-classify-command uninstall            # interactive removal
-classify-command uninstall --all      # remove both global and project hooks
+```bash
+cd ~/work/api-critique
+smart-allow enable              # wire hook into this repo's .claude/settings.json
+cd ~/projects/bricolage
+smart-allow enable              # wire into that repo too, independently
+cd ~/work/api-critique
+smart-allow disable             # remove the hook from this repo only; the other stays
+smart-allow install --status    # see where every hook currently lives
 ```
+
+`enable` walks up from CWD to the nearest `.git/` and wires the hook in
+`<repo-root>/.claude/settings.json`. It's short-hand for
+`install --project --yes`. Scope flags (`--global`, `--here`, `--path DIR`)
+still work — for instance `smart-allow enable --global` wires the hook for
+every Claude Code session.
+
+Full command surface:
+
+```bash
+smart-allow enable  [--global | --here | --path DIR]   # alias for install --project --yes
+smart-allow disable [--global | --here | --path DIR]   # alias for uninstall --project --yes
+
+smart-allow install --status     # where are the hooks wired?
+smart-allow install              # open the interactive wizard
+smart-allow install --global     # force global scope
+smart-allow install --project    # force project scope (git-root default)
+smart-allow install --here       # force project scope = CWD
+smart-allow install --path DIR   # force project scope = DIR
+
+smart-allow uninstall            # interactive removal
+smart-allow uninstall --all      # remove both global and project hooks
+```
+
+### Which Claude Code permission mode to pair with smart-allow?
+
+Claude Code's `permissionDecision: "ask"` hook output forces an interactive
+confirmation **regardless of the ambient mode** — so every mode plays well
+with smart-allow, and the hook's fail-safe (`ask` when the LLM is unsure or
+unreachable) is always honored:
+
+| Claude Code mode | allow (hook) | ask (hook) | deny (hook) |
+|---|---|---|---|
+| Ask before edit (default) | no prompt | prompt | block |
+| Edit automatically | no prompt | prompt | block |
+| Auto mode (Anthropic classifier) | no prompt | prompt | block |
+| **Bypass permission** | no prompt | **prompt** | block |
+
+**Recommended pairing: "Bypass permission" + smart-allow.** That combo
+minimizes interruptions (the fast-path silently approves reads, git inspect,
+kubectl get, …) while preserving a real human check on anything smart-allow
+isn't sure about. `deny` is absolute in every mode. If you'd rather have
+Anthropic's own classifier as a second layer, "Auto mode" works just as
+well — smart-allow still gets to fast-path decisions first.
 
 ## Switching policies
 
@@ -141,10 +187,10 @@ deployed to `~/.claude/policies/` on first install:
 | `permissive` | Throwaway containers. Allow broadly, still block `rm -rf /` and secret edits. |
 
 ```bash
-classify-command policy list          # the three shipped policies
-classify-command policy show          # current active-policy target
-classify-command policy set strict    # repoint ~/.claude/active-policy.md
-classify-command policy edit          # $EDITOR on the active policy
+smart-allow policy list          # the three shipped policies
+smart-allow policy show          # current active-policy target
+smart-allow policy set strict    # repoint ~/.claude/active-policy.md
+smart-allow policy edit          # $EDITOR on the active policy
 ```
 
 ### Per-project override
@@ -168,7 +214,7 @@ Environment variables the hook honours:
 | `CLAUDE_CLASSIFIER_CACHE_DIR`    | `$HOME/.claude/classifier-cache`    | Where decision cache is written           |
 | `CLAUDE_CLASSIFIER_LOG`          | `$HOME/.claude/classifier.log`      | Where audit log is appended               |
 | `CLAUDE_HOOK_DEBUG`              | (unset)                             | Set to `1` for stderr debug lines         |
-| `SMART_ALLOW_BIN`                | `$HOME/.claude/bin/classify-command` | Alternate binary path (for local dev)     |
+| `SMART_ALLOW_BIN`                | `$HOME/.claude/bin/smart-allow`     | Alternate binary path (for local dev)     |
 
 Devcontainer sets `OLLAMA_HOST=http://host.docker.internal:11434` automatically
 via `containerEnv`.
@@ -228,7 +274,7 @@ Everything goes through [devbox](https://www.jetify.com/devbox) (pins Go,
 [CLAUDE.md](CLAUDE.md) for the full guide.
 
 ```bash
-devbox run -- task build            # compile → ./classify-command (ldflags inject version)
+devbox run -- task build            # compile → ./smart-allow (ldflags inject version)
 devbox run -- task check            # go fmt + go vet + go test
 devbox run -- task install          # copy binary to ~/.claude/bin/ (no hook wiring)
 devbox run -- task install:project  # + wire hook at project scope (this repo)
@@ -268,10 +314,10 @@ alongside — Jekyll renders them at `socialgouv.github.io/smart-allow/<file>.ht
 ## Uninstall
 
 ```bash
-classify-command uninstall              # interactive
-classify-command uninstall --global     # remove hook from ~/.claude/settings.json
-classify-command uninstall --project    # remove hook from <git-root>/.claude/settings.json
-classify-command uninstall --all --yes  # remove both, no prompts
+smart-allow uninstall              # interactive
+smart-allow uninstall --global     # remove hook from ~/.claude/settings.json
+smart-allow uninstall --project    # remove hook from <git-root>/.claude/settings.json
+smart-allow uninstall --all --yes  # remove both, no prompts
 ```
 
 A timestamped backup (`settings.json.bak-<YYYYMMDD-HHMMSS>`) is written before

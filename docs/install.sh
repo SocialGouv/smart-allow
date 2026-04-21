@@ -5,17 +5,19 @@
 #   curl -fsSL https://socialgouv.github.io/smart-allow/install.sh | sh -s -- --global --yes
 #   curl -fsSL https://socialgouv.github.io/smart-allow/install.sh | sh -s -- --status
 #
-# This script only downloads the classify-command binary from a GitHub release
-# and hands off to the binary itself. All install/uninstall/policy logic lives
-# in the binary (subcommands), so this stays short and shell-agnostic.
+# This script only downloads the smart-allow binary from a GitHub release
+# and hands off to the binary itself. All install/uninstall/policy logic
+# lives in the binary (subcommands), so this stays short and
+# shell-agnostic.
 #
 # Env overrides:
 #   VERSION=v0.1.2              Pin a specific release (default: latest)
 #   INSTALL_DIR=/usr/local/bin   Binary destination (default: $HOME/.claude/bin)
+#   NO_PATH_UPDATE=1             Don't append a PATH export to ~/.bashrc / ~/.zshrc
 set -eu
 
 REPO="SocialGouv/smart-allow"
-BINARY_NAME="classify-command"
+BINARY_NAME="smart-allow"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.claude/bin}"
 
 info() { printf '\033[1;34m%s\033[0m\n' "$*"; }
@@ -82,6 +84,34 @@ verify_checksum() {
     info "checksum ok"
 }
 
+maybe_update_path() {
+    # If $INSTALL_DIR is already on PATH, nothing to do.
+    case ":${PATH}:" in
+        *":${INSTALL_DIR}:"*) return 0 ;;
+    esac
+    export_line="export PATH=\"${INSTALL_DIR}:\$PATH\""
+    if [ -n "${NO_PATH_UPDATE:-}" ]; then
+        info "hint: add this to your shell rc so '${BINARY_NAME}' is on PATH:"
+        printf '  %s\n' "$export_line"
+        return 0
+    fi
+    rc=""
+    case "${SHELL:-}" in
+        */zsh)  rc="$HOME/.zshrc" ;;
+        */bash) rc="$HOME/.bashrc" ;;
+    esac
+    if [ -z "$rc" ]; then
+        info "hint: add this to your shell rc so '${BINARY_NAME}' is on PATH:"
+        printf '  %s\n' "$export_line"
+        return 0
+    fi
+    if grep -qsF "$export_line" "$rc" 2>/dev/null; then
+        return 0
+    fi
+    printf '\n# added by smart-allow installer\n%s\n' "$export_line" >> "$rc"
+    info "added PATH export to $rc — restart your shell or run 'source $rc'"
+}
+
 main() {
     detect_platform
 
@@ -123,6 +153,8 @@ MSG
         sudo chmod +x "$dest"
     fi
     info "binary installed: $dest"
+
+    maybe_update_path
 
     # Hand off to the binary for everything else (policies, settings.json merge,
     # interactive wizard). Pass through any args the user piped along.

@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "CLAUDE_CLASSIFIER_CACHE_DIR=\"$CLAUDE_PROJECT_DIR/.claude/cache\" CLAUDE_CLASSIFIER_LOG=\"$CLAUDE_PROJECT_DIR/.claude/classifier.log\" \"${SMART_ALLOW_BIN:-$HOME/.claude/bin/classify-command}\"",
+            "command": "CLAUDE_CLASSIFIER_CACHE_DIR=\"$CLAUDE_PROJECT_DIR/.claude/cache\" CLAUDE_CLASSIFIER_LOG=\"$CLAUDE_PROJECT_DIR/.claude/classifier.log\" \"${SMART_ALLOW_BIN:-$HOME/.claude/bin/smart-allow}\"",
             "timeout": 15000
           }
         ]

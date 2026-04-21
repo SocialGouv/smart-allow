@@ -9,7 +9,7 @@ set -euo pipefail
 echo ">> install Claude Code CLI"
 npm install -g @anthropic-ai/claude-code
 
-echo ">> build classify-command and wire it into this project's .claude/settings.json"
+echo ">> build smart-allow and wire it into this project's .claude/settings.json"
 devbox run -- task install:project
 
 echo ">> link claude project history if host path differs from container path"

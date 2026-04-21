@@ -59,11 +59,11 @@ jobs:
         run: |
           EXT=""
           if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
-          OUTPUT="classify-command-${GOOS}-${GOARCH}${EXT}"
+          OUTPUT="smart-allow-${GOOS}-${GOARCH}${EXT}"
           VERSION="$(node -p "require('./package.json').version")"
           COMMIT="$(git rev-parse --short HEAD)"
           LDFLAGS="-s -w -X github.com/SocialGouv/smart-allow/internal/appinfo.Version=v${VERSION} -X github.com/SocialGouv/smart-allow/internal/appinfo.Commit=${COMMIT}"
-          go build -trimpath -ldflags="${LDFLAGS}" -o "${OUTPUT}" ./cmd/classify-command
+          go build -trimpath -ldflags="${LDFLAGS}" -o "${OUTPUT}" ./cmd/smart-allow
           if command -v sha256sum &>/dev/null; then
             sha256sum "${OUTPUT}" > "${OUTPUT}.sha256"
           else
@@ -72,9 +72,9 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: classify-command-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: smart-allow-${{ matrix.goos }}-${{ matrix.goarch }}
           path: |
-            classify-command-${{ matrix.goos }}-${{ matrix.goarch }}*
+            smart-allow-${{ matrix.goos }}-${{ matrix.goarch }}*
 
   release:
     needs: build-binaries

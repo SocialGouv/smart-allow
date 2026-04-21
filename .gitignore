@@ -1,6 +1,6 @@
 # Go build output (binary at repo root + per-platform release artefacts)
-/classify-command
-/classify-command-*
+/smart-allow
+/smart-allow-*
 
 # devbox local state
 .devbox/

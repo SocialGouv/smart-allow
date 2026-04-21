@@ -54,12 +54,60 @@ func main() {
 		os.Exit(runInstall(os.Args[2:]))
 	case "uninstall":
 		os.Exit(runUninstall(os.Args[2:]))
+	case "enable":
+		os.Exit(runEnable(os.Args[2:]))
+	case "disable":
+		os.Exit(runDisable(os.Args[2:]))
 	case "policy":
 		os.Exit(runPolicy(os.Args[2:]))
 	default:
-		// Hook mode: empty args or any flag argument (backward compat).
+		// Hook mode expects a PreToolUse JSON event on stdin. If stdin is a
+		// terminal and no flag was passed, the user almost certainly ran the
+		// command by hand wanting help — don't hang waiting for input.
+		if first == "" && isTerminal(os.Stdin) {
+			printHelp()
+			return
+		}
 		os.Exit(runHook(os.Args[1:]))
 	}
+}
+
+// runEnable is the friendly alias for `install --project --yes`. Flags pass
+// through, so `smart-allow enable --global` still works, and `--yes` is only
+// added when not already present.
+func runEnable(args []string) int {
+	return runInstall(augmentArgs(args, "--project", "--yes"))
+}
+
+// runDisable is the friendly alias for `uninstall --project --yes`.
+func runDisable(args []string) int {
+	return runUninstall(augmentArgs(args, "--project", "--yes"))
+}
+
+// augmentArgs prepends a default scope flag when none of
+// {--global, --project, --here, --path} was provided, and appends --yes when
+// it wasn't already present. Used to build the argv for `enable` / `disable`
+// from the user-typed args.
+func augmentArgs(args []string, defaultScope, yesFlag string) []string {
+	hasScope := false
+	hasYes := false
+	for _, a := range args {
+		switch a {
+		case "--global", "--project", "--here", "--path":
+			hasScope = true
+		case "--yes", "-y":
+			hasYes = true
+		}
+	}
+	out := make([]string, 0, len(args)+2)
+	if !hasScope {
+		out = append(out, defaultScope)
+	}
+	out = append(out, args...)
+	if !hasYes {
+		out = append(out, yesFlag)
+	}
+	return out
 }
 
 func printHelp() {
@@ -75,6 +123,9 @@ Usage:
   %s install [--global|--project|--here|--path DIR|--status|--yes]
   %s uninstall [--global|--project|--here|--path DIR|--all|--yes]
 
+  %s enable  [--global|--project|--here|--path DIR]   # alias: install --project --yes
+  %s disable [--global|--project|--here|--path DIR]   # alias: uninstall --project --yes
+
   %s policy list
   %s policy show
   %s policy set {strict|normal|permissive}
@@ -89,7 +140,7 @@ Env:
   CLAUDE_CLASSIFIER_LOG        default $HOME/.claude/classifier.log
   CLAUDE_HOOK_DEBUG=1          stderr debug trace
 `,
-		n, appinfo.FullVersion(), n, n, n, n, n, n, n, n, n)
+		n, appinfo.FullVersion(), n, n, n, n, n, n, n, n, n, n, n)
 }
 
 // runHook is the original hook pipeline, extracted so the main dispatcher can

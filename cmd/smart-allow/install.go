@@ -20,14 +20,27 @@ import (
 
 // ---------- hook command template ----------
 
-// hookSentinel is the idempotency marker we look for in settings.json
-// entries. Any matcher entry whose command string contains this substring is
-// considered "ours".
-const hookSentinel = "classify-command"
+// hookSentinels are the idempotency markers we look for in settings.json
+// entries. Any matcher entry whose command string contains one of these
+// substrings is considered "ours". Both the current name ("smart-allow")
+// and the legacy one ("classify-command") are recognized so upgrades
+// from v0.3.x replace the old entry instead of duplicating it.
+var hookSentinels = []string{"smart-allow", "classify-command"}
+
+// matchesOurHook reports whether a settings.json hook command string was
+// written by any version of this installer.
+func matchesOurHook(cmd string) bool {
+	for _, s := range hookSentinels {
+		if strings.Contains(cmd, s) {
+			return true
+		}
+	}
+	return false
+}
 
 // hookCommandFor formats the exact shell command Claude Code invokes for each
-// PreToolUse Bash event. Kept byte-identical to what the legacy bash
-// installer wrote, so pre-existing settings.json files stay valid.
+// PreToolUse Bash event. The invoked binary path embeds "smart-allow" so
+// matchesOurHook picks up every fresh write.
 func hookCommandFor(binaryPath string) string {
 	return fmt.Sprintf(
 		`CLAUDE_CLASSIFIER_CACHE_DIR="$CLAUDE_PROJECT_DIR/.claude/cache" `+
@@ -255,7 +268,7 @@ func hasHookEntry(settingsPath string) bool {
 		inner, _ := mm["hooks"].([]interface{})
 		for _, h := range inner {
 			hh, _ := h.(map[string]interface{})
-			if cmd, _ := hh["command"].(string); strings.Contains(cmd, hookSentinel) {
+			if cmd, _ := hh["command"].(string); matchesOurHook(cmd) {
 				return true
 			}
 		}
@@ -312,7 +325,7 @@ func mergeHook(settingsPath, binaryPath string) error {
 				kept = append(kept, h)
 				continue
 			}
-			if cmd, _ := hh["command"].(string); strings.Contains(cmd, hookSentinel) {
+			if cmd, _ := hh["command"].(string); matchesOurHook(cmd) {
 				continue
 			}
 			kept = append(kept, h)
@@ -348,9 +361,9 @@ func mergeHook(settingsPath, binaryPath string) error {
 
 // ---------- binary self-install ----------
 
-// ensureBinaryAtHome copies the running binary to $HOME/.claude/bin/
-// classify-command if it isn't already there. Returns the final stable
-// path, which is what settings.json should reference.
+// ensureBinaryAtHome copies the running binary to $HOME/.claude/bin/smart-allow
+// if it isn't already there. Returns the final stable path, which is what
+// settings.json should reference.
 func ensureBinaryAtHome(home string) (string, error) {
 	dest := filepath.Join(home, ".claude", "bin", appinfo.Name)
 	self, err := os.Executable()
@@ -468,7 +481,7 @@ func isTerminal(f *os.File) bool {
 // ---------- status printer ----------
 
 func printStatus(st *status) {
-	fmt.Printf("smart-allow — %s %s\n\n", appinfo.Name, st.BinaryVersion)
+	fmt.Printf("%s %s\n\n", appinfo.Name, st.BinaryVersion)
 	fmt.Println("Status:")
 	fmt.Printf("  binary:  %s\n", st.BinaryPath)
 	fmt.Printf("  global:  %s (%s)\n", installLabel(st.GlobalInstalled), st.GlobalPath)
@@ -507,9 +520,9 @@ func wizard(st *status) int {
 		fmt.Fprintln(os.Stderr,
 			"\ninstall: stdin is not a terminal; the interactive wizard needs a TTY.")
 		fmt.Fprintln(os.Stderr, "Either run one of:")
-		fmt.Fprintln(os.Stderr, "  classify-command install --global --yes")
-		fmt.Fprintln(os.Stderr, "  classify-command install --project --yes")
-		fmt.Fprintln(os.Stderr, "or re-run `classify-command install` from a terminal.")
+		fmt.Fprintln(os.Stderr, "  smart-allow install --global --yes")
+		fmt.Fprintln(os.Stderr, "  smart-allow install --project --yes")
+		fmt.Fprintln(os.Stderr, "or re-run `smart-allow install` from a terminal.")
 		return 0
 	}
 

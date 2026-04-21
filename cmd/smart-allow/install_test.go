@@ -264,7 +264,7 @@ func countSentinelEntries(t *testing.T, settingsPath string) int {
 		inner, _ := mm["hooks"].([]interface{})
 		for _, h := range inner {
 			hh, _ := h.(map[string]interface{})
-			if cmd, _ := hh["command"].(string); strings.Contains(cmd, hookSentinel) {
+			if cmd, _ := hh["command"].(string); matchesOurHook(cmd) {
 				n++
 			}
 		}

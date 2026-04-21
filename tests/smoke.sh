@@ -11,12 +11,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
 
 # Resolve the binary: prefer locally-built one at repo root, fall back to installed one.
-if [ -x "$REPO/classify-command" ]; then
-    BIN="$REPO/classify-command"
-elif [ -x "$HOME/.claude/bin/classify-command" ]; then
-    BIN="$HOME/.claude/bin/classify-command"
+if [ -x "$REPO/smart-allow" ]; then
+    BIN="$REPO/smart-allow"
+elif [ -x "$HOME/.claude/bin/smart-allow" ]; then
+    BIN="$HOME/.claude/bin/smart-allow"
 else
-    echo "FAIL: classify-command binary not found." >&2
+    echo "FAIL: smart-allow binary not found." >&2
     echo "      Build it with: devbox run -- task build" >&2
     exit 1
 fi

@@ -8,7 +8,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -121,7 +120,7 @@ func removeHook(settingsPath string) error {
 				kept = append(kept, h)
 				continue
 			}
-			if cmd, _ := hh["command"].(string); strings.Contains(cmd, hookSentinel) {
+			if cmd, _ := hh["command"].(string); matchesOurHook(cmd) {
 				continue
 			}
 			kept = append(kept, h)

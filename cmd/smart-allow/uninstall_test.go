@@ -57,7 +57,7 @@ func TestRemoveHook_PreservesSiblings(t *testing.T) {
 	if !strings.Contains(string(raw), "some-other-hook.sh") {
 		t.Errorf("sibling hook lost")
 	}
-	if strings.Contains(string(raw), hookSentinel) {
+	if matchesOurHook(string(raw)) {
 		t.Errorf("our hook not removed")
 	}
 }

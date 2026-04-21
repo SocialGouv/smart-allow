@@ -1,8 +1,8 @@
 version: "3"
 
 vars:
-  BINARY: classify-command
-  CMD: ./cmd/classify-command
+  BINARY: smart-allow
+  CMD: ./cmd/smart-allow
   VERSION:
     sh: node -p "require('./package.json').version" 2>/dev/null || echo "dev"
   COMMIT:
@@ -16,7 +16,7 @@ tasks:
       - task --list-all
 
   build:
-    desc: Build the classifier binary → ./classify-command
+    desc: Build the classifier binary → ./smart-allow
     env:
       CGO_ENABLED: "0"
     cmds:
@@ -107,7 +107,7 @@ tasks:
   clean:
     desc: Remove build artifacts
     cmds:
-      - rm -f {{.BINARY}} classify-command-*
+      - rm -f {{.BINARY}} smart-allow-* classify-command classify-command-*
 
   version:
     desc: Print the version injected into the binary (from package.json + git)
