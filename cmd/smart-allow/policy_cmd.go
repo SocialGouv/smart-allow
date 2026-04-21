@@ -6,14 +6,14 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
-	"path/filepath"
 
+	"github.com/SocialGouv/smart-allow/internal/appinfo"
 	"github.com/SocialGouv/smart-allow/policies"
 )
 
 func runPolicy(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: classify-command policy {list|show|set NAME|edit}")
+		fmt.Fprintf(os.Stderr, "usage: %s policy {list|show|set NAME|edit}\n", appinfo.Name)
 		return 2
 	}
 	home, err := os.UserHomeDir()
@@ -21,6 +21,8 @@ func runPolicy(args []string) int {
 		fmt.Fprintln(os.Stderr, "policy:", err)
 		return 1
 	}
+	active := activePolicyPath(home)
+
 	switch args[0] {
 	case "list":
 		for _, n := range policies.Names() {
@@ -29,7 +31,6 @@ func runPolicy(args []string) int {
 		return 0
 
 	case "show":
-		active := filepath.Join(home, ".claude", "active-policy.md")
 		target, err := os.Readlink(active)
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
@@ -48,15 +49,13 @@ func runPolicy(args []string) int {
 			return 2
 		}
 		name := args[1]
-		target := filepath.Join(home, ".claude", "policies", name+".md")
-		if _, err := os.Stat(target); err != nil {
-			fmt.Fprintf(os.Stderr,
-				"policy set: %s not found (run `classify-command install` first)\n", target)
-			return 1
-		}
-		active := filepath.Join(home, ".claude", "active-policy.md")
-		_ = os.Remove(active)
-		if err := os.Symlink(target, active); err != nil {
+		if err := setActivePolicy(home, name); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				fmt.Fprintf(os.Stderr,
+					"policy set: %s not found (run `%s install` first)\n",
+					policyPath(home, name), appinfo.Name)
+				return 1
+			}
 			fmt.Fprintln(os.Stderr, "policy:", err)
 			return 1
 		}
@@ -64,7 +63,6 @@ func runPolicy(args []string) int {
 		return 0
 
 	case "edit":
-		active := filepath.Join(home, ".claude", "active-policy.md")
 		editor := os.Getenv("EDITOR")
 		if editor == "" {
 			for _, c := range []string{"vi", "nano"} {

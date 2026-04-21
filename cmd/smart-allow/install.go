@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/SocialGouv/smart-allow/internal/appinfo"
 	"github.com/SocialGouv/smart-allow/policies"
@@ -53,9 +52,8 @@ func hookCommandFor(binaryPath string) string {
 // ---------- Status ----------
 
 type status struct {
-	BinaryPath    string
-	BinaryVersion string
-	Home          string
+	BinaryPath string
+	Home       string
 
 	GlobalPath      string
 	GlobalInstalled bool
@@ -236,10 +234,9 @@ func detectStatus(f *installFlags) (*status, error) {
 	}
 	bin, _ := os.Executable()
 	st := &status{
-		BinaryPath:    bin,
-		BinaryVersion: appinfo.FullVersion(),
-		Home:          home,
-		GlobalPath:    filepath.Join(home, ".claude", "settings.json"),
+		BinaryPath: bin,
+		Home:       home,
+		GlobalPath: globalSettingsPath(home),
 	}
 	st.GlobalInstalled = hasHookEntry(st.GlobalPath)
 
@@ -288,8 +285,7 @@ func mergeHook(settingsPath, binaryPath string) error {
 	}
 	var obj map[string]interface{}
 	if raw, err := os.ReadFile(settingsPath); err == nil {
-		stamp := time.Now().Format("20060102-150405")
-		if err := os.WriteFile(settingsPath+".bak-"+stamp, raw, 0o644); err != nil {
+		if err := backupSettings(settingsPath, raw); err != nil {
 			return err
 		}
 		if err := json.Unmarshal(raw, &obj); err != nil {
@@ -365,7 +361,7 @@ func mergeHook(settingsPath, binaryPath string) error {
 // if it isn't already there. Returns the final stable path, which is what
 // settings.json should reference.
 func ensureBinaryAtHome(home string) (string, error) {
-	dest := filepath.Join(home, ".claude", "bin", appinfo.Name)
+	dest := installedBinaryPath(home)
 	self, err := os.Executable()
 	if err != nil {
 		return "", err
@@ -410,14 +406,14 @@ func ensureBinaryAtHome(home string) (string, error) {
 // survive reinstalls) and points $HOME/.claude/active-policy.md at
 // normal.md if no active-policy symlink is set.
 func installPolicies(home string) error {
-	dir := filepath.Join(home, ".claude", "policies")
+	dir := policiesDir(home)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	names := policies.Names()
 	sort.Strings(names)
 	for _, n := range names {
-		dst := filepath.Join(dir, n+".md")
+		dst := policyPath(home, n)
 		if _, err := os.Stat(dst); err == nil {
 			continue
 		}
@@ -429,9 +425,8 @@ func installPolicies(home string) error {
 			return err
 		}
 	}
-	active := filepath.Join(home, ".claude", "active-policy.md")
-	if _, err := os.Lstat(active); errors.Is(err, fs.ErrNotExist) {
-		return os.Symlink(filepath.Join(dir, "normal.md"), active)
+	if _, err := os.Lstat(activePolicyPath(home)); errors.Is(err, fs.ErrNotExist) {
+		return setActivePolicy(home, "normal")
 	}
 	return nil
 }
@@ -439,7 +434,7 @@ func installPolicies(home string) error {
 // activePolicyName returns the basename (without .md) of the currently
 // active policy, or "(none)" if no symlink exists.
 func activePolicyName(home string) string {
-	target, err := os.Readlink(filepath.Join(home, ".claude", "active-policy.md"))
+	target, err := os.Readlink(activePolicyPath(home))
 	if err != nil {
 		return "(none)"
 	}
@@ -481,7 +476,7 @@ func isTerminal(f *os.File) bool {
 // ---------- status printer ----------
 
 func printStatus(st *status) {
-	fmt.Printf("%s %s\n\n", appinfo.Name, st.BinaryVersion)
+	fmt.Printf("%s %s\n\n", appinfo.Name, appinfo.FullVersion())
 	fmt.Println("Status:")
 	fmt.Printf("  binary:  %s\n", st.BinaryPath)
 	fmt.Printf("  global:  %s (%s)\n", installLabel(st.GlobalInstalled), st.GlobalPath)

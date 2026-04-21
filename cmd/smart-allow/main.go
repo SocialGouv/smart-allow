@@ -1,21 +1,14 @@
-// Classifier de commandes Bash pour Claude Code (hook PreToolUse).
-// Lit un événement JSON sur stdin, émet le verdict au format
-// hookSpecificOutput.permissionDecision (Claude Code ≥ 2.1).
+// smart-allow is a Bash classifier for Claude Code's PreToolUse hook.
+// It reads a JSON event on stdin and writes a hookSpecificOutput verdict
+// (Claude Code ≥ 2.1 format) on stdout. The same binary also ships the
+// install/uninstall/policy subcommands; hook mode is the default when
+// invoked with no subcommand.
 //
-// Subcommands:
-//
-//	classify-command            # hook mode (stdin: PreToolUse JSON)
-//	classify-command install    # interactive / scoped installer
-//	classify-command uninstall  # remove hook from global / project settings
-//	classify-command policy …   # switch / inspect / edit active policy
-//	classify-command --version
-//	classify-command --help
-//
-// Pipeline of hook mode:
-//  1. fast-path déterministe (allowlist/denylist)
-//  2. cache local (TTL 1h par défaut)
-//  3. LLM local via Ollama
-//  4. fail-safe → "ask" si le LLM échoue
+// Hook-mode pipeline:
+//  1. deterministic fast-path (allowlist / hard-deny / dangerous regex)
+//  2. local cache keyed by SHA256(command + policy + model), TTL 1h
+//  3. local LLM via Ollama (format=json, temperature=0)
+//  4. fail-safe: any unexpected error emits "ask", never "allow".
 package main
 
 import (
@@ -85,15 +78,17 @@ func runDisable(args []string) int {
 }
 
 // augmentArgs prepends a default scope flag when none of
-// {--global, --project, --here, --path} was provided, and appends --yes when
-// it wasn't already present. Used to build the argv for `enable` / `disable`
-// from the user-typed args.
+// {--global, --project, --here, --path, --all} was provided, and appends
+// --yes when it wasn't already present. Used to build the argv for
+// `enable` / `disable` from the user-typed args. --all is included so
+// `disable --all` passes through cleanly (uninstall recognizes it, and
+// we must not sneak in a conflicting --project on top).
 func augmentArgs(args []string, defaultScope, yesFlag string) []string {
 	hasScope := false
 	hasYes := false
 	for _, a := range args {
 		switch a {
-		case "--global", "--project", "--here", "--path":
+		case "--global", "--project", "--here", "--path", "--all":
 			hasScope = true
 		case "--yes", "-y":
 			hasYes = true

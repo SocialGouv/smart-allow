@@ -8,7 +8,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"time"
 )
 
 type uninstallFlags struct {
@@ -92,8 +91,7 @@ func removeHook(settingsPath string) error {
 		}
 		return err
 	}
-	stamp := time.Now().Format("20060102-150405")
-	if err := os.WriteFile(settingsPath+".bak-"+stamp, raw, 0o644); err != nil {
+	if err := backupSettings(settingsPath, raw); err != nil {
 		return err
 	}
 	var obj map[string]interface{}
