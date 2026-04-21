@@ -126,8 +126,18 @@ MSG
 
     # Hand off to the binary for everything else (policies, settings.json merge,
     # interactive wizard). Pass through any args the user piped along.
+    #
+    # When we were invoked via `curl | sh`, stdin is the pipe from curl, which
+    # is already EOF by the time we exec — the wizard would see no input and
+    # silently default to "Quit". Reattach stdin to the controlling terminal
+    # so the user can actually answer prompts. Falls back to the current
+    # stdin if /dev/tty is unavailable (CI, non-interactive shells).
     info ""
-    exec "$dest" install "$@"
+    if [ -r /dev/tty ]; then
+        exec "$dest" install "$@" < /dev/tty
+    else
+        exec "$dest" install "$@"
+    fi
 }
 
 main "$@"

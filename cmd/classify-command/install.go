@@ -455,6 +455,16 @@ func fileExists(p string) bool {
 	return err == nil
 }
 
+// isTerminal reports whether f is attached to an interactive terminal.
+// Uses the file's mode bits — no external deps, works on Unix.
+func isTerminal(f *os.File) bool {
+	st, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return (st.Mode() & os.ModeCharDevice) != 0
+}
+
 // ---------- status printer ----------
 
 func printStatus(st *status) {
@@ -488,6 +498,20 @@ func installLabel(b bool) string {
 
 func wizard(st *status) int {
 	printStatus(st)
+
+	// Guard rail: if we have no tty to prompt on, spending time printing a
+	// menu is pointless — stdin is already at EOF and every read returns
+	// immediately. Surface the non-interactive state clearly and point at
+	// the flag-driven entry points.
+	if !isTerminal(os.Stdin) {
+		fmt.Fprintln(os.Stderr,
+			"\ninstall: stdin is not a terminal; the interactive wizard needs a TTY.")
+		fmt.Fprintln(os.Stderr, "Either run one of:")
+		fmt.Fprintln(os.Stderr, "  classify-command install --global --yes")
+		fmt.Fprintln(os.Stderr, "  classify-command install --project --yes")
+		fmt.Fprintln(os.Stderr, "or re-run `classify-command install` from a terminal.")
+		return 0
+	}
 
 	type choice struct {
 		label string
