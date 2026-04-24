@@ -88,6 +88,32 @@ func mentionsSensitiveRead(cmd string) bool {
 	return false
 }
 
+// localLLMEndpoints: loopback addresses on Ollama's default port. Matched as
+// substrings; ports other than 11434 are intentionally out (if a user runs
+// Ollama elsewhere they can still bypass via the CLI path).
+var localLLMEndpoints = []string{
+	"localhost:11434",
+	"127.0.0.1:11434",
+	"host.docker.internal:11434",
+	"0.0.0.0:11434",
+}
+
+// mentionsLocalLLM is true when the command clearly targets a local LLM
+// (Ollama CLI or loopback endpoint). Used by the fast-path to relax the
+// "sensitive read alone → ask" rule: running your own local model against
+// a dotfile is not exfiltration to a cloud provider.
+func mentionsLocalLLM(cmd string) bool {
+	if hasCLIToken(cmd, "ollama") {
+		return true
+	}
+	for _, s := range localLLMEndpoints {
+		if strings.Contains(cmd, s) {
+			return true
+		}
+	}
+	return false
+}
+
 func mentionsAIProvider(cmd string) bool {
 	for _, s := range aiProviderSubstrings {
 		if strings.Contains(cmd, s) {

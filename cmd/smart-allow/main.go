@@ -177,31 +177,13 @@ func runHook(_ []string) int {
 	}
 
 	// 1. Fast-path
-	switch fastPath(command) {
-	case "approve":
-		debugf("fast-path APPROVE: %s", head(command, 80))
-		emit("approve", "fast-path: safe prefix")
+	if v := fastPath(command); v.Decision != "" {
+		debugf("fast-path %s: %s", v.Decision, head(command, 80))
+		emit(v.Decision, v.Reason)
 		logEvent(logFile, map[string]interface{}{
 			"cmd":      command,
-			"decision": "approve",
-			"via":      "fast-path",
-		})
-		return 0
-	case "ask":
-		debugf("fast-path ASK: %s", head(command, 80))
-		emit("ask", "fast-path: AI-exfil guard (secret or cloud provider)")
-		logEvent(logFile, map[string]interface{}{
-			"cmd":      command,
-			"decision": "ask",
-			"via":      "fast-path",
-		})
-		return 0
-	case "deny":
-		debugf("fast-path DENY: %s", head(command, 80))
-		emit("deny", "fast-path: hard-deny pattern")
-		logEvent(logFile, map[string]interface{}{
-			"cmd":      command,
-			"decision": "deny",
+			"decision": v.Decision,
+			"reason":   v.Reason,
 			"via":      "fast-path",
 		})
 		return 0
