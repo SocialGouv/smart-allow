@@ -53,12 +53,14 @@ Interactive shell with the toolchain active: `devbox shell`.
     `resolveProjectRoot`, `mergeHook`, `ensureBinaryAtHome`, `installPolicies`
   - `uninstall.go` — `runUninstall`, `removeHook`
   - `policy_cmd.go` — `runPolicy` (`list`/`show`/`set`/`edit`)
-  - `fastpath.go`, `cache.go`, `ollama.go`, `policy.go` — hook pipeline pieces
-    (unchanged by the installer work)
-  - `*_test.go` — unit tests
+  - `fastpath.go`, `ai_exfil.go`, `cache.go`, `ollama.go`, `policy.go` —
+    hook pipeline pieces (unchanged by the installer work)
+  - `*_test.go` — unit tests (notably `ai_exfil_test.go`: ~70 table-driven
+    cases covering sensitive reads, cloud AI providers, combined exfil,
+    Ollama-is-local, and CLI-token boundaries)
 - `internal/appinfo/` — build-time identity (`Version`, `Commit`) injected via
   `-ldflags`. Source of `smart-allow --version` output.
-- `policies/` — Go package that owns the three French-language Markdown
+- `policies/` — Go package that owns the three English-language Markdown
   policies (`strict.md`, `normal.md`, `permissive.md`). `embed.go`'s
   `//go:embed *.md` ships them inside the binary, so the installer is
   offline-capable after the binary download.
@@ -92,8 +94,10 @@ stdin (PreToolUse JSON)
     ▼
 1. Fast-path (deterministic)
     │  allowlist prefix → "allow"
-    │  hard-deny substring → "deny"
-    │  dangerous regex → fall through
+    │  hard-deny substring (rm -rf /, mkfs, fork bomb, …) → "deny"
+    │  AI-exfil: sensitive read + cloud LLM provider → "deny"
+    │  AI-exfil: sensitive read OR cloud LLM provider alone → "ask"
+    │  dangerous regex (curl|bash, …) → fall through
     ▼
 2. Cache lookup (SHA256(cmd+policy+model), TTL=1h)
     │
@@ -145,6 +149,15 @@ Adjust `main` release target by landing conventional commits (`feat:`, `fix:`,
 - **Paths**: `CLAUDE_CLASSIFIER_CACHE_DIR` and `CLAUDE_CLASSIFIER_LOG` default
   to `$HOME/.claude/...`. Project-scoped hooks (`.claude/settings.json` here)
   override them inline to stay inside the repo.
+- **AI-exfil guard**: reading `.env`/`~/.ssh`/`*.pem`/…, referencing
+  `$*TOKEN*`/`$*SECRET*`/… env vars, dumping env (`env`/`printenv`), or
+  calling a cloud LLM provider (OpenAI/Anthropic/Cohere/Mistral/Groq/
+  Gemini/Perplexity/DeepSeek/xAI/HuggingFace/Together/Fireworks/Replicate)
+  short-circuits to `ask` at fast-path. The combination of both in the
+  same command is `deny`. Ollama and local loopback endpoints
+  (`localhost`/`127.0.0.1`/`host.docker.internal`) are explicitly out of
+  scope — see `cmd/smart-allow/ai_exfil.go` for the exact substrings,
+  CLIs, and env-var keywords.
 
 ## End-to-end validation
 

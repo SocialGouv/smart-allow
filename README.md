@@ -89,7 +89,7 @@ model pulled (default: `qwen2.5-coder:7b`).
 ```bash
 git clone https://github.com/SocialGouv/smart-allow && cd smart-allow
 devbox run -- task install:project    # build + wire hook for this repo only
-bash tests/smoke.sh                   # 7 checks, including an Ollama round-trip
+bash tests/smoke.sh                   # 11 checks, including an Ollama round-trip and AI-exfil guards
 ```
 
 Start `claude` from the repo. `ls` is auto-allowed, `kubectl apply` prompts
@@ -190,10 +190,51 @@ isn't sure about. `deny` is absolute in every mode. If you'd rather have
 Anthropic's own classifier as a second layer, "Auto mode" works just as
 well — smart-allow still gets to fast-path decisions first.
 
+## AI-exfil protection
+
+On top of the policy LLM, smart-allow deterministically screens every
+command for two orthogonal leaks to a **cloud AI provider**. The check
+runs at fast-path (no Ollama round-trip, no model hallucination) because
+small local models reliably miss the framing and approve `cat .env` on
+the basis that the file is in the working directory.
+
+**Vector 1 — stdout flows back to Claude Code (= Anthropic).** Commands
+whose output exposes a credential by construction are intercepted with
+`permissionDecision: "ask"`, so the human sees the secret before agreeing
+to ship it. Detected:
+
+- Paths: `.env`/`.env.*`, `~/.ssh/`, `~/.aws/{credentials,config}`,
+  `~/.gnupg/`, `~/.npmrc`, `~/.pypirc`, `~/.git-credentials`,
+  `~/.config/gh/hosts.yml`, `~/.config/gcloud/`, `~/.kube/config`,
+  `id_rsa*`/`id_ed25519*`/…, `*.pem`, `*.p12`, `*.pfx`
+- Full env dumps: `env` / `printenv` as a standalone command or at the
+  head of a pipe (`env VAR=1 cmd` is NOT a dump and stays unflagged)
+- Env-var references whose name contains `TOKEN`, `PASSWORD`, `PASSWD`,
+  `SECRET`, `CREDENTIAL`, `APIKEY`, `API_KEY`
+
+**Vector 2 — direct call to a cloud LLM provider.** Same `ask` verdict
+in isolation, `deny` when chained with a vector-1 read in the same
+pipeline (`cat .env | curl -d @- https://api.openai.com/...`).
+
+- Domains: `api.openai.com`, `api.anthropic.com`, `api.cohere.{com,ai}`,
+  `api.mistral.ai`, `api.groq.com`, `api.deepseek.com`,
+  `api.together.{ai,xyz}`, `api.perplexity.ai`, `api.x.ai`,
+  `generativelanguage.googleapis.com`, `api-inference.huggingface.co`,
+  `api.fireworks.ai`, `api.replicate.com`
+- CLIs (matched only in real command position, so `pip install openai`
+  is not flagged): `openai`, `chatgpt`, `gemini`, `claude`, `mistralai`,
+  `cohere`, `perplexity`, `deepseek`
+
+**Out of scope: Ollama and local loopback.** `ollama run ...`, and any
+`curl http://{localhost,127.0.0.1,host.docker.internal}:11434/...` are
+explicitly not flagged — running inference through your own local model
+is not exfiltration. Source of truth:
+[cmd/smart-allow/ai_exfil.go](cmd/smart-allow/ai_exfil.go).
+
 ## Switching policies
 
-Three policies ship in [policies/](policies/) (embedded in the binary) and get
-deployed to `~/.claude/policies/` on first install:
+Three policies ship in [policies/](policies/) (embedded in the binary, **in
+English**) and get deployed to `~/.claude/policies/` on first install:
 
 | Policy       | When to use                                                                   |
 |--------------|-------------------------------------------------------------------------------|
