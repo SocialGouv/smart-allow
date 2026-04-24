@@ -6,7 +6,7 @@ import (
 )
 
 // FastPathDecision: deterministic verdict before any LLM call.
-// Returns "approve", "deny", or "" (undecided → fall through to LLM).
+// Returns "approve", "ask", "deny", or "" (undecided → fall through to LLM).
 func fastPath(command string) string {
 	cmd := strings.TrimSpace(command)
 	if cmd == "" {
@@ -23,6 +23,22 @@ func fastPath(command string) string {
 		if re.MatchString(cmd) {
 			return ""
 		}
+	}
+
+	// AI-exfil checks. Must run before safe-prefix approval because commands
+	// like `cat .env` match the safe-prefix "cat " but their stdout flows
+	// back into Claude Code's context (= a cloud LLM provider).
+	sens := mentionsSensitiveRead(cmd)
+	ai := mentionsAIProvider(cmd)
+	if sens && ai {
+		return "deny"
+	}
+	// Sensitive-read OR provider call alone: the policy says "ask". We emit it
+	// deterministically instead of falling through to the LLM because small
+	// local models tend to approve `cat .env` on the grounds that the file is
+	// in the working directory, missing the secret-exfil framing entirely.
+	if sens || ai {
+		return "ask"
 	}
 
 	hasComplexity := false

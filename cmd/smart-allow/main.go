@@ -187,6 +187,15 @@ func runHook(_ []string) int {
 			"via":      "fast-path",
 		})
 		return 0
+	case "ask":
+		debugf("fast-path ASK: %s", head(command, 80))
+		emit("ask", "fast-path: AI-exfil guard (secret or cloud provider)")
+		logEvent(logFile, map[string]interface{}{
+			"cmd":      command,
+			"decision": "ask",
+			"via":      "fast-path",
+		})
+		return 0
 	case "deny":
 		debugf("fast-path DENY: %s", head(command, 80))
 		emit("deny", "fast-path: hard-deny pattern")

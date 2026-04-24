@@ -24,8 +24,12 @@ tasks:
     sources:
       - "**/*.go"
       - go.mod
+      - package.json
     generates:
       - "{{.BINARY}}"
+    status:
+      - test -x {{.BINARY}}
+      - test "$(./{{.BINARY}} --version 2>/dev/null)" = "{{.BINARY}} v{{.VERSION}}+{{.COMMIT}}"
 
   install:
     desc: Build and copy binary to $HOME/.claude/bin (no hook wiring)

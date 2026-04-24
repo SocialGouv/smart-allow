@@ -3,11 +3,11 @@ package main
 import "testing"
 
 func TestParseDecision_Clean(t *testing.T) {
-	e, err := parseDecision(`{"decision":"ask","reason":"kubectl modifie l'état"}`)
+	e, err := parseDecision(`{"decision":"ask","reason":"kubectl mutates cluster state"}`)
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
-	if e.Decision != "ask" || e.Reason != "kubectl modifie l'état" {
+	if e.Decision != "ask" || e.Reason != "kubectl mutates cluster state" {
 		t.Fatalf("bad parse: %+v", e)
 	}
 }

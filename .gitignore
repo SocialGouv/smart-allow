@@ -23,3 +23,6 @@ examples/test-project/.claude/classifier.log
 # Backup files created by install.sh / uninstall.sh
 *.bak-*
 
+# Ephemeral inter-agent communication channel (Hiro/Duo, not for commit)
+.collab/
+

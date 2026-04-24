@@ -10,23 +10,23 @@ import (
 	"time"
 )
 
-const systemPrompt = `Tu es un classifieur de sécurité pour un agent de coding autonome.
+const systemPrompt = `You are a security classifier for an autonomous coding agent.
 
-Tu reçois une commande shell et une politique de sécurité. Tu dois décider entre :
-- "approve" : la commande est sûre ET conforme à la politique. Aucun humain n'a besoin de la valider.
-- "ask" : la commande n'est pas clairement interdite mais a un effet notable, irréversible, ou sort du périmètre évident. Demander confirmation à l'humain.
-- "deny" : la commande est clairement interdite par la politique ou manifestement dangereuse.
+You receive a shell command and a security policy. You must decide between:
+- "approve": the command is safe AND compliant with the policy. No human validation needed.
+- "ask": the command is not clearly forbidden but has a notable or irreversible effect, or falls outside the obvious perimeter. Request human confirmation.
+- "deny": the command is clearly forbidden by the policy or manifestly dangerous.
 
-RÈGLES IMPORTANTES :
-1. En cas de doute, réponds "ask". Ne jamais "approve" si tu n'es pas sûr.
-2. Pour les commandes chaînées (pipes, &&, ;), la décision est la plus restrictive de toutes les sous-commandes.
-3. Pour les wrappers (bash -c, sh -c, xargs, npx, docker exec) : analyse la commande INTERNE, pas le wrapper.
-4. Méfie-toi des obfuscations : variables de substitution, base64, eval, commandes en plusieurs mots collés.
+IMPORTANT RULES:
+1. When in doubt, answer "ask". Never "approve" if you are not sure.
+2. For chained commands (pipes, &&, ;), the decision is the most restrictive of all sub-commands.
+3. For wrappers (bash -c, sh -c, xargs, npx, docker exec): analyze the INNER command, not the wrapper.
+4. Beware of obfuscation: variable substitution, base64, eval, commands split across tokens.
 
-Réponds UNIQUEMENT avec un objet JSON sur une seule ligne, sans texte autour, sans backticks :
-{"decision":"approve","reason":"..."} OU {"decision":"ask","reason":"..."} OU {"decision":"deny","reason":"..."}
+Respond with ONLY a JSON object on a single line, no surrounding text, no backticks:
+{"decision":"approve","reason":"..."} OR {"decision":"ask","reason":"..."} OR {"decision":"deny","reason":"..."}
 
-"reason" doit être court (< 120 caractères), en français, expliquant le critère déclencheur.`
+"reason" must be short (< 120 characters), in English, explaining the triggering criterion.`
 
 type ollamaRequest struct {
 	Model   string                 `json:"model"`
@@ -43,17 +43,17 @@ type ollamaResponse struct {
 
 // callOllama invokes the local LLM and returns a parsed decision.
 func callOllama(host, model, command, policy, cwd string, timeout time.Duration) (cacheEntry, error) {
-	userPrompt := fmt.Sprintf(`POLITIQUE ACTIVE :
+	userPrompt := fmt.Sprintf(`ACTIVE POLICY:
 %s
 
 ---
 
-WORKING DIRECTORY : %s
+WORKING DIRECTORY: %s
 
-COMMANDE À CLASSIFIER :
+COMMAND TO CLASSIFY:
 %s
 
-Réponds par UN SEUL objet JSON, rien d'autre.`, policy, cwd, command)
+Respond with A SINGLE JSON object, nothing else.`, policy, cwd, command)
 
 	reqBody, _ := json.Marshal(ollamaRequest{
 		Model:  model,
